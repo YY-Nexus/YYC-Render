@@ -1,0 +1,49 @@
+name: AI Code Review & Completion
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  push:
+    branches: [main, dev]
+
+jobs:
+  ai_code_review:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        pip install requests black flake8
+
+    - name: Run Lint & Format
+      run: |
+        flake8 . > lint_report.txt || true
+        black . --check > format_report.txt || true
+
+    - name: AI Code Completion (Call Qwen3 API)
+      env:
+        QWEN3_API: ${{ secrets.QWEN3_API_URL }}
+      run: |
+        python .github/ai_complete.py lint_report.txt format_report.txt
+
+    - name: Post Comment to PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          import os
+          with open('.github/ai_comment.md', 'r') as f:
+              comment_body = f.read()
+          github.rest.issues.createComment(
+            issue_number=github.context.issue.number,
+            body=comment_body
+          )
