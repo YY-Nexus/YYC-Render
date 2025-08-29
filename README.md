@@ -39,6 +39,13 @@
 - **文件处理** - 多媒体文件上传和分析
 - **流式响应** - 实时数据传输
 
+#### 优化系统 🆕
+- **应用程序审核器** - 自动检测性能、安全性、可访问性问题
+- **自动优化引擎** - 实时性能监控和自动优化
+- **增强错误追踪** - 全面的错误监控和恢复系统
+- **测试框架管理** - 自动化测试和代码覆盖率分析
+- **系统优化仪表板** - 实时监控和管理界面
+
 #### 数据存储
 - **LocalStorage** - 客户端数据持久化
 - **JSON格式** - 结构化数据存储
@@ -97,7 +104,12 @@ ai-search-app/
 │   ├── model-fine-tuning.ts      # 模型微调
 │   ├── model-versioning.ts       # 模型版本管理
 │   ├── collaboration-enhanced.ts # 增强协作
-│   └── recommendations.ts        # 推荐系统
+│   ├── recommendations.ts        # 推荐系统
+│   ├── application-auditor.ts    # 🆕 应用程序审核器
+│   ├── auto-optimization-engine.ts # 🆕 自动优化引擎
+│   ├── enhanced-error-tracker.ts # 🆕 增强错误追踪
+│   ├── test-framework-manager.ts # 🆕 测试框架管理
+│   └── error-handler.ts          # 🆕 增强错误处理
 ├── components/                   # React组件
 │   ├── ui/                       # UI组件库
 │   └── theme-provider.tsx        # 主题提供者

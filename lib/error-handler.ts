@@ -1,4 +1,6 @@
 // 增强错误处理系统
+import { EnhancedErrorTracker } from './enhanced-error-tracker'
+
 export enum ErrorType {
   NETWORK = "network",
   DATABASE = "database",
@@ -355,6 +357,64 @@ export class EnhancedErrorHandler {
         console.error("错误监听器执行失败:", err)
       }
     })
+
+    // 集成增强错误追踪器
+    this.integrateWithEnhancedTracker(error)
+  }
+
+  // 集成增强错误追踪器
+  private static integrateWithEnhancedTracker(error: ErrorInfo): void {
+    try {
+      // 映射错误级别
+      const level = this.mapSeverityToLevel(error.severity)
+      
+      EnhancedErrorTracker.logError({
+        level,
+        message: error.message,
+        stack: error.stack,
+        context: {
+          component: error.context?.component || 'error-handler',
+          action: error.type,
+          metadata: {
+            errorId: error.id,
+            errorType: error.type,
+            userMessage: error.userMessage,
+            retryable: error.retryable,
+            retryCount: error.retryCount,
+            ...error.context
+          }
+        },
+        tags: ['enhanced-error-handler', error.type, error.severity]
+      })
+    } catch (err) {
+      console.error("增强错误追踪器集成失败:", err)
+    }
+  }
+
+  // 映射错误严重级别到追踪器级别
+  private static mapSeverityToLevel(severity: ErrorSeverity): 'error' | 'warning' | 'info' | 'debug' {
+    switch (severity) {
+      case ErrorSeverity.CRITICAL:
+        return 'error'
+      case ErrorSeverity.HIGH:
+        return 'error'
+      case ErrorSeverity.MEDIUM:
+        return 'warning'
+      case ErrorSeverity.LOW:
+        return 'info'
+      default:
+        return 'error'
+    }
+  }
+
+  // 初始化增强错误追踪
+  static initializeEnhancedTracking(): void {
+    try {
+      EnhancedErrorTracker.initialize()
+      console.log("✅ 增强错误追踪已启用")
+    } catch (err) {
+      console.error("❌ 增强错误追踪初始化失败:", err)
+    }
   }
 
   // 获取错误统计
