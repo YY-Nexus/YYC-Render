@@ -18,7 +18,12 @@
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "optimize": "tsx scripts/optimize-application.ts",
+    "optimize:audit": "tsx -e \"import { ApplicationAuditor } from './lib/application-auditor'; ApplicationAuditor.performFullAudit().then(console.log)\"",
+    "optimize:test": "tsx -e \"import { TestFrameworkManager } from './lib/test-framework-manager'; TestFrameworkManager.initialize().then(() => TestFrameworkManager.runAllTests()).then(console.log)\"",
+    "optimize:monitor": "tsx -e \"import { EnhancedErrorTracker } from './lib/enhanced-error-tracker'; EnhancedErrorTracker.initialize(); console.log('Error monitoring started')\"",
+    "optimize:performance": "tsx -e \"import { AutoOptimizationEngine } from './lib/auto-optimization-engine'; AutoOptimizationEngine.triggerManualOptimization().then(console.log)\""
   },
   "dependencies": {
     "@ai-sdk/openai": "latest",
@@ -64,6 +69,7 @@
     "eslint-config-next": "14.0.4",
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.1",
     "typescript": "^5"
   },
   "engines": {
