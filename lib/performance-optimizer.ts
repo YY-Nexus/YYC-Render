@@ -321,7 +321,11 @@ export class PerformanceOptimizer {
       onError?: (error: Error, item: T, index: number) => void
     } = {},
   ): Promise<R[]> {
-    const { batchSize = 10, concurrency = 3, onProgress, onError } = options
+    // Validate concurrency to prevent resource exhaustion
+    const maxConcurrency = 10
+    const validatedConcurrency = Math.min(Math.max(1, options.concurrency || 3), maxConcurrency)
+    const { batchSize = 10, onProgress, onError } = options
+    const concurrency = validatedConcurrency
 
     const results: R[] = new Array(items.length)
     const startTime = Date.now()
@@ -545,11 +549,39 @@ export class PerformanceOptimizer {
   static async preloadResources(urls: string[]): Promise<void> {
     const promises = urls.map(async (url) => {
       try {
+        // Validate URL to prevent SSRF
+        const parsedUrl = new URL(url)
+        const allowedProtocols = ['https:', 'http:']
+        
+        if (!allowedProtocols.includes(parsedUrl.protocol)) {
+          throw new Error(`不支持的协议: ${parsedUrl.protocol}`)
+        }
+        
+        // Block internal/private IP addresses and hostnames
+        const hostname = parsedUrl.hostname.toLowerCase()
+        const blockedHosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']
+        
+        // Check exact matches first
+        if (blockedHosts.includes(hostname)) {
+          throw new Error('不允许访问内部资源')
+        }
+        
+        // Check IPv4 private ranges and localhost variations with single regex
+        // Covers: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 127.0.0.0/8
+        if (hostname.match(/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|127\.)/)) {
+          throw new Error('不允许访问内部资源')
+        }
+        
+        // Check for localhost domain variations
+        if (hostname.endsWith('.local') || hostname.endsWith('.localhost')) {
+          throw new Error('不允许访问内部资源')
+        }
+        
         const response = await fetch(url)
         const data = await response.blob()
         this.setCache(`preload_${url}`, data, 3600000) // 1小时缓存
       } catch (error) {
-        console.warn(`预加载资源失败: ${url}`, error)
+        console.warn('预加载资源失败:', error)
       }
     })
 

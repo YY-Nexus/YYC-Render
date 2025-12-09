@@ -482,10 +482,17 @@ export class EnhancedAuthManager {
   private static generateTOTPSecret(): string {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
     let secret = ""
-    const randomBytes = EncryptionManager.generateSecureRandom(20)
+    const randomBytes = EncryptionManager.generateSecureRandom(64) // Get more random bytes
 
-    for (let i = 0; i < 32; i++) {
-      secret += chars[randomBytes[i % 20] % chars.length]
+    // Use rejection sampling to avoid modulo bias
+    for (let i = 0, j = 0; i < 32 && j < randomBytes.length; j++) {
+      const randomValue = randomBytes[j]
+      // Only accept values that don't introduce bias
+      const maxAcceptable = 256 - (256 % chars.length)
+      if (randomValue < maxAcceptable) {
+        secret += chars[randomValue % chars.length]
+        i++
+      }
     }
 
     return secret

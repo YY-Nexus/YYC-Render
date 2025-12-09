@@ -100,6 +100,24 @@ export class CrossDeviceSyncManager {
     timestamp: Date
   }> = []
 
+  // Helper function to generate cryptographically secure random strings
+  private static generateSecureRandomString(length: number): string {
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      // Use enough bytes to ensure sufficient randomness after base64 encoding
+      const array = new Uint8Array(length)
+      crypto.getRandomValues(array)
+      // Use base64url encoding for URL-safe random strings
+      // Convert bytes to string safely without call stack issues
+      const base64 = btoa(Array.from(array, byte => String.fromCharCode(byte)).join(''))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '')
+      return base64.substring(0, length)
+    }
+    // For Node.js environments, crypto should be available via require('crypto').webcrypto
+    throw new Error('Cryptographic random number generator not available')
+  }
+
   static async initialize(): Promise<void> {
     await this.detectCurrentDevice()
     this.startDeviceDiscovery()
@@ -149,7 +167,7 @@ export class CrossDeviceSyncManager {
       if (existingId) return existingId
     }
 
-    const deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const deviceId = `device_${Date.now()}_${this.generateSecureRandomString(9)}`
     
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("deviceId", deviceId)
@@ -343,7 +361,7 @@ export class CrossDeviceSyncManager {
   }
 
   static createSyncSession(userId: string, deviceIds: string[]): SyncSession {
-    const sessionId = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const sessionId = `sync_${Date.now()}_${this.generateSecureRandomString(9)}`
     
     const devices = deviceIds.map(id => this.devices.get(id)).filter(Boolean) as Device[]
     
@@ -370,7 +388,7 @@ export class CrossDeviceSyncManager {
   }
 
   static createCollaborationSession(sessionName: string): string {
-    const sessionId = `collab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const sessionId = `collab_${Date.now()}_${this.generateSecureRandomString(9)}`
     
     console.log(`创建协作会话: ${sessionName} (ID: ${sessionId})`)
     

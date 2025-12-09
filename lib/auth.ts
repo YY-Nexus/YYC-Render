@@ -131,6 +131,24 @@ export class AuthManager {
   private static emailToUserId: Map<string, string> = new Map()
   private static refreshTokens: Map<string, { userId: string; expiresAt: Date }> = new Map()
 
+  // Helper function to generate cryptographically secure random strings
+  private static generateSecureRandomString(length: number): string {
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      // Use enough bytes to ensure sufficient randomness after base64 encoding
+      const array = new Uint8Array(length)
+      crypto.getRandomValues(array)
+      // Use base64url encoding for URL-safe random strings
+      // Convert bytes to string safely without call stack issues
+      const base64 = btoa(Array.from(array, byte => String.fromCharCode(byte)).join(''))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '')
+      return base64.substring(0, length)
+    }
+    // For Node.js environments, crypto should be available via require('crypto').webcrypto
+    throw new Error('Cryptographic random number generator not available')
+  }
+
   // 初始化默认管理员用户
   static {
     const adminUser: User = {
@@ -252,7 +270,7 @@ export class AuthManager {
       }
 
       // 创建新用户
-      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const userId = `user_${Date.now()}_${this.generateSecureRandomString(9)}`
 
       const newUser: User = {
         id: userId,
@@ -375,7 +393,7 @@ export class AuthManager {
         }
       } else {
         // 未绑定用户，创建新用户
-        const userId = `wechat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        const userId = `wechat_${Date.now()}_${this.generateSecureRandomString(9)}`
 
         const newUser: User = {
           id: userId,
