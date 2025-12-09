@@ -100,6 +100,20 @@ export class CrossDeviceSyncManager {
     timestamp: Date
   }> = []
 
+  // Helper function to generate cryptographically secure random strings
+  private static generateSecureRandomString(length: number): string {
+    const array = new Uint8Array(length)
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(array)
+    } else {
+      // Fallback for environments without crypto
+      for (let i = 0; i < length; i++) {
+        array[i] = Math.floor(Math.random() * 256)
+      }
+    }
+    return Array.from(array, byte => byte.toString(36).padStart(2, '0')).join('').substring(0, length)
+  }
+
   static async initialize(): Promise<void> {
     await this.detectCurrentDevice()
     this.startDeviceDiscovery()
@@ -149,7 +163,7 @@ export class CrossDeviceSyncManager {
       if (existingId) return existingId
     }
 
-    const deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const deviceId = `device_${Date.now()}_${this.generateSecureRandomString(9)}`
     
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("deviceId", deviceId)
@@ -343,7 +357,7 @@ export class CrossDeviceSyncManager {
   }
 
   static createSyncSession(userId: string, deviceIds: string[]): SyncSession {
-    const sessionId = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const sessionId = `sync_${Date.now()}_${this.generateSecureRandomString(9)}`
     
     const devices = deviceIds.map(id => this.devices.get(id)).filter(Boolean) as Device[]
     
@@ -370,7 +384,7 @@ export class CrossDeviceSyncManager {
   }
 
   static createCollaborationSession(sessionName: string): string {
-    const sessionId = `collab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const sessionId = `collab_${Date.now()}_${this.generateSecureRandomString(9)}`
     
     console.log(`创建协作会话: ${sessionName} (ID: ${sessionId})`)
     

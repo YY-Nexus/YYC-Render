@@ -236,7 +236,7 @@ export class RealAIService {
         timestamp: Date.now(),
       }
     } catch (error) {
-      console.error(`AI服务调用失败 (${provider}):`, error)
+      console.error('AI服务调用失败:', { provider }, error)
 
       // 尝试备用提供商
       if (provider !== this.activeProvider) {
@@ -284,7 +284,7 @@ export class RealAIService {
           throw new Error(`不支持的AI提供商: ${config.provider}`)
       }
     } catch (error) {
-      console.error(`流式AI服务调用失败 (${provider}):`, error)
+      console.error('流式AI服务调用失败:', { provider }, error)
       throw error
     }
   }

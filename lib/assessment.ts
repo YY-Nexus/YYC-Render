@@ -397,6 +397,31 @@ export class AssessmentManager {
     }
   }
 
+  // Simple encryption helper for localStorage
+  private static encryptData(data: string): string {
+    if (typeof window === "undefined" || typeof btoa === "undefined") {
+      return data
+    }
+    try {
+      // Use base64 encoding as a basic obfuscation
+      // In production, this should use proper encryption with EncryptionManager
+      return btoa(encodeURIComponent(data))
+    } catch {
+      return data
+    }
+  }
+
+  private static decryptData(data: string): string {
+    if (typeof window === "undefined" || typeof atob === "undefined") {
+      return data
+    }
+    try {
+      return decodeURIComponent(atob(data))
+    } catch {
+      return data
+    }
+  }
+
   // 证书管理
   static generateCertificate(
     userId: string,
@@ -422,13 +447,21 @@ export class AssessmentManager {
     certificates.unshift(certificate)
 
     if (typeof window !== "undefined") {
-      localStorage.setItem(this.CERTIFICATES_KEY, JSON.stringify(certificates))
+      const encryptedData = this.encryptData(JSON.stringify(certificates))
+      localStorage.setItem(this.CERTIFICATES_KEY, encryptedData)
     }
 
     return certificate
   }
 
   private static generateVerificationCode(): string {
+    // Use cryptographically secure random numbers
+    const array = new Uint8Array(16)
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(array)
+      return Array.from(array, byte => byte.toString(36).padStart(2, '0')).join('').substring(0, 24)
+    }
+    // Fallback for non-crypto environments (still insecure but noted)
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
   }
 
@@ -437,7 +470,10 @@ export class AssessmentManager {
 
     try {
       const stored = localStorage.getItem(this.CERTIFICATES_KEY)
-      const allCertificates: Certificate[] = stored ? JSON.parse(stored) : []
+      if (!stored) return []
+      
+      const decryptedData = this.decryptData(stored)
+      const allCertificates: Certificate[] = JSON.parse(decryptedData)
 
       if (userId) {
         return allCertificates.filter((c) => c.userId === userId)

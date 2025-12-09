@@ -439,11 +439,23 @@ export class EncryptionManager {
       throw new Error("至少需要选择一种字符类型")
     }
 
-    const randomBytes = this.generateSecureRandom(length)
+    const randomBytes = this.generateSecureRandom(length * 2) // Get more random bytes to reduce bias
     let password = ""
 
-    for (let i = 0; i < length; i++) {
-      password += charset[randomBytes[i] % charset.length]
+    // Use rejection sampling to avoid modulo bias
+    for (let i = 0, j = 0; i < length && j < randomBytes.length; j++) {
+      const randomValue = randomBytes[j]
+      // Only accept values that don't introduce bias
+      const maxAcceptable = 256 - (256 % charset.length)
+      if (randomValue < maxAcceptable) {
+        password += charset[randomValue % charset.length]
+        i++
+      }
+    }
+
+    // If we didn't get enough characters (very unlikely), recursively get more
+    if (password.length < length) {
+      return password + this.generateSecurePassword(length - password.length, options)
     }
 
     return password

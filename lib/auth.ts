@@ -131,6 +131,20 @@ export class AuthManager {
   private static emailToUserId: Map<string, string> = new Map()
   private static refreshTokens: Map<string, { userId: string; expiresAt: Date }> = new Map()
 
+  // Helper function to generate cryptographically secure random strings
+  private static generateSecureRandomString(length: number): string {
+    const array = new Uint8Array(length)
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(array)
+    } else {
+      // Fallback for environments without crypto
+      for (let i = 0; i < length; i++) {
+        array[i] = Math.floor(Math.random() * 256)
+      }
+    }
+    return Array.from(array, byte => byte.toString(36).padStart(2, '0')).join('').substring(0, length)
+  }
+
   // 初始化默认管理员用户
   static {
     const adminUser: User = {
@@ -252,7 +266,7 @@ export class AuthManager {
       }
 
       // 创建新用户
-      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const userId = `user_${Date.now()}_${this.generateSecureRandomString(9)}`
 
       const newUser: User = {
         id: userId,
@@ -375,7 +389,7 @@ export class AuthManager {
         }
       } else {
         // 未绑定用户，创建新用户
-        const userId = `wechat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        const userId = `wechat_${Date.now()}_${this.generateSecureRandomString(9)}`
 
         const newUser: User = {
           id: userId,
