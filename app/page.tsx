@@ -1,413 +1,713 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Sparkles, Brain, Mic, Eye, Hand, Zap } from "lucide-react"
+import {
+  Send,
+  Mic,
+  Paperclip,
+  Camera,
+  Settings,
+  GraduationCap,
+  Globe,
+  History,
+  Clock,
+  X,
+  Heart,
+  MessageSquare,
+  Brain,
+  Users,
+  BarChart3,
+  MicOff,
+  Sparkles,
+  Target,
+  Trophy,
+  Calendar,
+  FileText,
+  Video,
+  Headphones,
+  Map,
+  Lightbulb,
+  MoreHorizontal,
+} from "lucide-react"
+import { HistoryManager, type SearchHistory } from "@/lib/history"
 
 export default function HomePage() {
-  const [query, setQuery] = useState("")
-  const [isListening, setIsListening] = useState(false)
-  const [isGazing, setIsGazing] = useState(false)
-  const [gestureMode, setGestureMode] = useState<"idle" | "pan" | "pinch" | "swipe">("idle")
-  const [voiceCommand, setVoiceCommand] = useState("")
-  const [contextualActions, setContextualActions] = useState<string[]>([])
-  const [userIntent, setUserIntent] = useState<"search" | "generate" | "learn" | null>(null)
-
-  const containerRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [question, setQuestion] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showWelcomeAnimation, setShowWelcomeAnimation] = useState(true)
+  const [showBubble, setShowBubble] = useState(false)
+  const [bubbleText, setBubbleText] = useState("")
+  const [bubbleIndex, setBubbleIndex] = useState(0)
+  const [showHistory, setShowHistory] = useState(false)
+  const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([])
+  const [filteredHistory, setFilteredHistory] = useState<SearchHistory[]>([])
+  const [isRecording, setIsRecording] = useState(false)
+  const [showFileUpload, setShowFileUpload] = useState(false)
+  const [showMoreTools, setShowMoreTools] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const router = useRouter()
 
-  // 语音识别系统
+  // 多元化友好对话内容
+  const friendlyMessages = [
+    "你好！我是你的AI学习伙伴 🎓",
+    "准备好开始学习之旅了吗？✨",
+    "有什么想要探索的知识吗？🔍",
+    "让我们一起发现新的可能性！🚀",
+    "今天想学点什么有趣的？💡",
+    "我在这里帮助你解答疑问 🤝",
+    "准备好迎接知识的惊喜了吗？🎉",
+    "让我们开启智慧的大门吧！🌟",
+    "每个问题都是新发现的开始 🔬",
+    "知识的海洋等待我们探索 🌊",
+  ]
+
+  // 未开发功能列表
+  const moreTools = [
+    { id: "practice", name: "智能练习", icon: Target, description: "个性化练习模式" },
+    { id: "achievements", name: "成就系统", icon: Trophy, description: "学习成就追踪" },
+    { id: "schedule", name: "学习计划", icon: Calendar, description: "智能学习安排" },
+    { id: "notes", name: "笔记管理", icon: FileText, description: "知识笔记整理" },
+    { id: "videos", name: "视频学习", icon: Video, description: "视频课程资源" },
+    { id: "audio", name: "音频学习", icon: Headphones, description: "音频内容播放" },
+    { id: "inspiration", name: "灵感收集", icon: Lightbulb, description: "创意想法记录" },
+    { id: "ai-assistant", name: "AI助手", icon: Sparkles, description: "高级AI功能" },
+    { id: "global-resources", name: "全球资源", icon: Globe, description: "国际学习资源" },
+  ]
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!question.trim()) return
+
+    setIsSubmitting(true)
+
+    // 添加到历史记录
+    HistoryManager.addHistory(question)
+
+    // 跳转到思考过程页面
+    router.push(`/thinking?q=${encodeURIComponent(question)}`)
+  }
+
+  const handleHistoryClick = (historyItem: SearchHistory) => {
+    setQuestion(historyItem.question)
+    setShowHistory(false)
+  }
+
+  const handleDeleteHistory = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    HistoryManager.removeHistory(id)
+    loadHistory()
+  }
+
+  const loadHistory = () => {
+    const history = HistoryManager.getHistory()
+    setSearchHistory(history)
+    setFilteredHistory(history)
+  }
+
+  const handleQuestionChange = (value: string) => {
+    setQuestion(value)
+
+    // 实时搜索历史记录
+    if (value.trim()) {
+      const filtered = HistoryManager.searchHistory(value)
+      setFilteredHistory(filtered.slice(0, 5)) // 只显示前5个匹配结果
+    } else {
+      setFilteredHistory(searchHistory.slice(0, 10)) // 显示最近10个
+    }
+  }
+
+  // 语音输入功能
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaRecorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = mediaRecorder
+
+      const audioChunks: BlobPart[] = []
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunks.push(event.data)
+      }
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: "audio/wav" })
+        // 这里可以调用语音识别API
+        handleVoiceRecognition(audioBlob)
+        stream.getTracks().forEach((track) => track.stop())
+      }
+
+      mediaRecorder.start()
+      setIsRecording(true)
+    } catch (error) {
+      console.error("无法访问麦克风:", error)
+      alert("无法访问麦克风，请检查权限设置")
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop()
+      setIsRecording(false)
+    }
+  }
+
+  const handleVoiceRecognition = async (audioBlob: Blob) => {
+    // 模拟语音识别结果
+    const mockTranscription = "这是语音识别的结果示例"
+    setQuestion(mockTranscription)
+  }
+
+  // 文件上传功能
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      // 处理文件上传
+      const fileName = file.name
+      setQuestion(`请分析这个文件：${fileName}`)
+      setShowFileUpload(false)
+    }
+  }
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      // 处理图片上传
+      const fileName = file.name
+      setQuestion(`请分析这张图片：${fileName}`)
+    }
+  }
+
+  // 主要功能处理
+  const handleMainMenuClick = (action: string) => {
+    switch (action) {
+      case "community":
+        router.push("/community")
+        break
+      case "knowledge-graph":
+        router.push("/knowledge-graph")
+        break
+      case "learning-path":
+        router.push("/learning-path/create")
+        break
+      case "mindmap":
+        router.push("/generate/mindmap")
+        break
+      default:
+        break
+    }
+  }
+
+  // 更多工具功能处理
+  const handleMoreToolClick = (toolId: string) => {
+    const tool = moreTools.find((t) => t.id === toolId)
+    if (tool) {
+      alert(`${tool.name}功能正在开发中...`)
+    }
+    setShowMoreTools(false)
+  }
+
+  const formatTime = (timestamp: number) => {
+    const now = Date.now()
+    const diff = now - timestamp
+    const minutes = Math.floor(diff / (1000 * 60))
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+    if (minutes < 1) return "刚刚"
+    if (minutes < 60) return `${minutes}分钟前`
+    if (hours < 24) return `${hours}小时前`
+    if (days < 7) return `${days}天前`
+    return new Date(timestamp).toLocaleDateString("zh-CN")
+  }
+
   useEffect(() => {
-    if (typeof window !== "undefined" && "webkitSpeechRecognition" in window) {
-      const recognition = new (window as any).webkitSpeechRecognition()
-      recognition.continuous = true
-      recognition.interimResults = true
-      recognition.lang = "zh-CN"
+    // 动画序列：3秒后开始弹跳，弹跳完成后显示气泡
+    const animationTimer = setTimeout(() => {
+      setShowWelcomeAnimation(false)
+    }, 3000)
 
-      recognition.onresult = (event: any) => {
-        let finalTranscript = ""
-        let interimTranscript = ""
+    const bubbleTimer = setTimeout(() => {
+      setShowBubble(true)
+      setBubbleText(friendlyMessages[0])
+    }, 4000)
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript
-          } else {
-            interimTranscript += transcript
-          }
-        }
-
-        if (finalTranscript) {
-          handleVoiceCommand(finalTranscript)
-        }
-        setVoiceCommand(interimTranscript)
+    // 每5秒切换一次友好消息
+    const messageInterval = setInterval(() => {
+      if (showBubble) {
+        setBubbleIndex((prev) => {
+          const nextIndex = (prev + 1) % friendlyMessages.length
+          setBubbleText(friendlyMessages[nextIndex])
+          return nextIndex
+        })
       }
+    }, 5000)
 
-      recognition.onstart = () => setIsListening(true)
-      recognition.onend = () => setIsListening(false)
-
-      // 自动启动语音识别
-      recognition.start()
-
-      return () => recognition.stop()
-    }
-  }, [])
-
-  // 手势识别系统
-  useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-
-    let startX = 0,
-      startY = 0,
-      currentX = 0,
-      currentY = 0
-    let isPointerDown = false
-    let gestureStartTime = 0
-
-    const handlePointerDown = (e: PointerEvent) => {
-      isPointerDown = true
-      startX = currentX = e.clientX
-      startY = currentY = e.clientY
-      gestureStartTime = Date.now()
-
-      // 触觉反馈
-      if ("vibrate" in navigator) {
-        navigator.vibrate(50)
-      }
-    }
-
-    const handlePointerMove = (e: PointerEvent) => {
-      if (!isPointerDown) return
-
-      currentX = e.clientX
-      currentY = e.clientY
-
-      const deltaX = currentX - startX
-      const deltaY = currentY - startY
-      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
-
-      if (distance > 50) {
-        if (Math.abs(deltaX) > Math.abs(deltaY)) {
-          setGestureMode(deltaX > 0 ? "swipe" : "swipe")
-          handleSwipeGesture(deltaX > 0 ? "right" : "left")
-        } else {
-          setGestureMode(deltaY > 0 ? "pan" : "pan")
-          handlePanGesture(deltaY > 0 ? "down" : "up")
-        }
-      }
-    }
-
-    const handlePointerUp = () => {
-      isPointerDown = false
-      const gestureTime = Date.now() - gestureStartTime
-
-      if (gestureTime < 200) {
-        handleTapGesture()
-      }
-
-      setTimeout(() => setGestureMode("idle"), 300)
-    }
-
-    container.addEventListener("pointerdown", handlePointerDown)
-    container.addEventListener("pointermove", handlePointerMove)
-    container.addEventListener("pointerup", handlePointerUp)
+    // 加载历史记录
+    loadHistory()
 
     return () => {
-      container.removeEventListener("pointerdown", handlePointerDown)
-      container.removeEventListener("pointermove", handlePointerMove)
-      container.removeEventListener("pointerup", handlePointerUp)
+      clearTimeout(animationTimer)
+      clearTimeout(bubbleTimer)
+      clearInterval(messageInterval)
     }
-  }, [])
-
-  // 眼动追踪模拟（基于鼠标位置）
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      const centerX = window.innerWidth / 2
-      const centerY = window.innerHeight / 2
-      const distance = Math.sqrt((e.clientX - centerX) ** 2 + (e.clientY - centerY) ** 2)
-
-      if (distance < 100) {
-        setIsGazing(true)
-        setTimeout(() => {
-          if (distance < 100) {
-            handleGazeActivation()
-          }
-        }, 2000)
-      } else {
-        setIsGazing(false)
-      }
-    }
-
-    window.addEventListener("mousemove", handleMouseMove)
-    return () => window.removeEventListener("mousemove", handleMouseMove)
-  }, [])
-
-  // 上下文感知系统
-  useEffect(() => {
-    const analyzeContext = () => {
-      const actions = []
-
-      if (query.includes("思维导图") || query.includes("结构")) {
-        actions.push("生成思维导图")
-        setUserIntent("generate")
-      }
-      if (query.includes("学习") || query.includes("教程")) {
-        actions.push("创建学习路径")
-        setUserIntent("learn")
-      }
-      if (query.includes("PPT") || query.includes("演示")) {
-        actions.push("制作演示文稿")
-        setUserIntent("generate")
-      }
-      if (query.length > 0) {
-        actions.push("智能搜索")
-        if (!userIntent) setUserIntent("search")
-      }
-
-      setContextualActions(actions)
-    }
-
-    const debounce = setTimeout(analyzeContext, 300)
-    return () => clearTimeout(debounce)
-  }, [query, userIntent])
-
-  // 语音命令处理
-  const handleVoiceCommand = (command: string) => {
-    const lowerCommand = command.toLowerCase()
-
-    if (lowerCommand.includes("搜索") || lowerCommand.includes("查找")) {
-      const searchQuery = command.replace(/搜索|查找/g, "").trim()
-      if (searchQuery) {
-        setQuery(searchQuery)
-        executeSearch(searchQuery)
-      }
-    } else if (lowerCommand.includes("思维导图")) {
-      router.push("/generate/mindmap?voice=true")
-    } else if (lowerCommand.includes("学习路径")) {
-      router.push("/learning-path/create?voice=true")
-    } else if (lowerCommand.includes("清空")) {
-      setQuery("")
-    } else {
-      setQuery(command)
-    }
-  }
-
-  // 手势处理
-  const handleSwipeGesture = (direction: "left" | "right") => {
-    if (direction === "right" && contextualActions.length > 0) {
-      executeContextualAction(contextualActions[0])
-    } else if (direction === "left") {
-      setQuery("")
-      setUserIntent(null)
-    }
-  }
-
-  const handlePanGesture = (direction: "up" | "down") => {
-    if (direction === "up" && query) {
-      executeSearch(query)
-    } else if (direction === "down") {
-      router.push("/history")
-    }
-  }
-
-  const handleTapGesture = () => {
-    if (textareaRef.current) {
-      textareaRef.current.focus()
-    }
-  }
-
-  // 注视激活
-  const handleGazeActivation = () => {
-    if (query && userIntent) {
-      executeSearch(query)
-    }
-  }
-
-  // 执行搜索
-  const executeSearch = (searchQuery: string) => {
-    if (!searchQuery.trim()) return
-
-    // 触觉反馈
-    if ("vibrate" in navigator) {
-      navigator.vibrate([100, 50, 100])
-    }
-
-    router.push(`/results?q=${encodeURIComponent(searchQuery)}&mode=${userIntent || "search"}`)
-  }
-
-  // 执行上下文操作
-  const executeContextualAction = (action: string) => {
-    switch (action) {
-      case "生成思维导图":
-        router.push(`/generate/mindmap?q=${encodeURIComponent(query)}`)
-        break
-      case "创建学习路径":
-        router.push(`/learning-path/create?concept=${encodeURIComponent(query)}`)
-        break
-      case "制作演示文稿":
-        router.push(`/generate/ppt?q=${encodeURIComponent(query)}`)
-        break
-      case "智能搜索":
-        executeSearch(query)
-        break
-    }
-  }
+  }, [showBubble])
 
   return (
-    <div
-      ref={containerRef}
-      className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden"
-      style={{
-        background: `radial-gradient(circle at ${isGazing ? "50% 50%" : "30% 70%"}, rgba(139, 92, 246, 0.3) 0%, transparent 50%)`,
-      }}
-    >
-      {/* 动态背景粒子 */}
-      <div className="absolute inset-0 overflow-hidden">
-        {Array.from({ length: 50 }).map((_, i) => (
-          <div
-            key={i}
-            className="absolute w-1 h-1 bg-white/20 rounded-full animate-pulse"
+    <div className="min-h-screen bg-gray-50 relative overflow-hidden">
+      {/* AI角色动画 - 向上移动110px */}
+      <div
+        className={`fixed z-50 transition-all duration-1000 ease-out ${
+          showWelcomeAnimation
+            ? "top-4 left-1/2 transform -translate-x-1/2 scale-50"
+            : "left-1/2 transform -translate-x-1/2 scale-100"
+        }`}
+        style={{
+          top: showWelcomeAnimation ? "1rem" : "calc(50% - 110px)",
+          animation: showWelcomeAnimation ? "none" : "bounce-in 1s ease-out",
+        }}
+      >
+        {/* AI角色图片 - 使用新提供的图片 */}
+        <div className="relative">
+          <img
+            src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/8-2VgZzVLKblPRmH5bcKQzcTtVV56Nxu.png"
+            alt="AI助手"
+            className="w-32 h-32 drop-shadow-2xl"
             style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-              animationDuration: `${2 + Math.random() * 3}s`,
+              filter: "drop-shadow(0 10px 20px rgba(59, 130, 246, 0.3))",
             }}
           />
-        ))}
-      </div>
 
-      {/* 主要内容区域 */}
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4">
-        {/* 标题区域 - 响应式动画 */}
-        <div
-          className={`text-center mb-12 transition-all duration-1000 ${
-            query ? "transform -translate-y-8 scale-90" : ""
-          }`}
-        >
-          <h1 className="text-6xl md:text-8xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 mb-6">
-            YYC³ AI
-          </h1>
-          <p className="text-xl md:text-2xl text-gray-300 mb-4">无边界智能交互中心</p>
-          <div className="flex items-center justify-center space-x-4 text-sm text-gray-400">
-            <span className={`flex items-center ${isListening ? "text-red-400" : ""}`}>
-              <Mic className="w-4 h-4 mr-1" />
-              语音{isListening ? "监听中" : "待命"}
-            </span>
-            <span className={`flex items-center ${gestureMode !== "idle" ? "text-blue-400" : ""}`}>
-              <Hand className="w-4 h-4 mr-1" />
-              手势{gestureMode !== "idle" ? "识别中" : "待命"}
-            </span>
-            <span className={`flex items-center ${isGazing ? "text-green-400" : ""}`}>
-              <Eye className="w-4 h-4 mr-1" />
-              注视{isGazing ? "激活中" : "待命"}
-            </span>
-          </div>
-        </div>
-
-        {/* 智能输入区域 */}
-        <div className="w-full max-w-4xl relative">
-          <div
-            className={`relative bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 transition-all duration-500 ${
-              query ? "shadow-2xl shadow-purple-500/25" : "shadow-lg"
-            }`}
-          >
-            <textarea
-              ref={textareaRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="说出您的想法，或直接开始输入..."
-              className="w-full px-8 py-6 bg-transparent text-white placeholder-gray-400 text-lg md:text-xl resize-none outline-none min-h-[120px]"
-              rows={3}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  executeSearch(query)
-                }
+          {/* 友好气泡对话 - 多元化内容 */}
+          {showBubble && (
+            <div
+              className="absolute -top-16 -left-8 bg-white rounded-2xl px-4 py-3 shadow-lg border-2 border-blue-200 animate-bubble-in min-w-[280px]"
+              style={{
+                animation: "bubble-in 0.5s ease-out",
               }}
-            />
-
-            {/* 语音实时反馈 */}
-            {voiceCommand && (
-              <div className="absolute bottom-4 left-8 text-sm text-blue-300 animate-pulse">
-                语音输入: {voiceCommand}
+            >
+              <div className="text-sm text-gray-700 font-medium text-center transition-all duration-500">
+                {bubbleText}
               </div>
-            )}
+              {/* 气泡尾巴 */}
+              <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-white border-r-2 border-b-2 border-blue-200 rotate-45"></div>
+            </div>
+          )}
 
-            {/* 手势状态指示 */}
-            {gestureMode !== "idle" && (
-              <div className="absolute top-4 right-8 text-sm text-blue-300">
-                {gestureMode === "swipe" && "滑动手势"}
-                {gestureMode === "pan" && "拖拽手势"}
-                {gestureMode === "pinch" && "缩放手势"}
-              </div>
-            )}
-          </div>
-
-          {/* 上下文感知操作提示 */}
-          {contextualActions.length > 0 && (
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              {contextualActions.map((action, index) => (
+          {/* 信号波动画 */}
+          <div className="absolute -top-2 left-1/2 transform -translate-x-1/2">
+            <div className="flex space-x-1">
+              {[0, 1, 2].map((i) => (
                 <div
-                  key={action}
-                  onClick={() => executeContextualAction(action)}
-                  className={`px-6 py-3 bg-gradient-to-r from-purple-500/20 to-blue-500/20 backdrop-blur-sm rounded-2xl border border-white/10 text-white cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-lg ${
-                    index === 0 ? "ring-2 ring-purple-400/50" : ""
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    {action.includes("思维导图") && <Brain className="w-4 h-4" />}
-                    {action.includes("搜索") && <Search className="w-4 h-4" />}
-                    {action.includes("学习") && <Sparkles className="w-4 h-4" />}
-                    <span>{action}</span>
-                  </div>
-                  {index === 0 && <div className="text-xs text-gray-400 mt-1">右滑或注视2秒激活</div>}
-                </div>
+                  key={i}
+                  className="w-1 h-3 bg-blue-500 rounded-full animate-pulse"
+                  style={{
+                    animationDelay: `${i * 0.2}s`,
+                    animationDuration: "1.5s",
+                  }}
+                ></div>
               ))}
             </div>
-          )}
-
-          {/* 交互提示 */}
-          <div className="mt-8 text-center text-gray-400 text-sm space-y-2">
-            <div className="flex items-center justify-center space-x-6">
-              <span>🗣️ 语音: 直接说话</span>
-              <span>👆 手势: 上滑搜索</span>
-              <span>👀 注视: 中心区域2秒</span>
-            </div>
-            <div className="flex items-center justify-center space-x-6">
-              <span>➡️ 右滑: 执行建议</span>
-              <span>⬅️ 左滑: 清空内容</span>
-              <span>⬇️ 下滑: 查看历史</span>
-            </div>
           </div>
         </div>
+      </div>
 
-        {/* 智能状态指示器 */}
-        <div className="fixed bottom-8 right-8 flex flex-col space-y-2">
-          {isListening && (
-            <div className="bg-red-500/20 backdrop-blur-sm rounded-full p-3 border border-red-400/30">
-              <Mic className="w-5 h-5 text-red-400 animate-pulse" />
-            </div>
-          )}
-          {gestureMode !== "idle" && (
-            <div className="bg-blue-500/20 backdrop-blur-sm rounded-full p-3 border border-blue-400/30">
-              <Hand className="w-5 h-5 text-blue-400" />
-            </div>
-          )}
-          {isGazing && (
-            <div className="bg-green-500/20 backdrop-blur-sm rounded-full p-3 border border-green-400/30">
-              <Eye className="w-5 h-5 text-green-400 animate-pulse" />
-            </div>
-          )}
-          {userIntent && (
-            <div className="bg-purple-500/20 backdrop-blur-sm rounded-full p-3 border border-purple-400/30">
-              <Zap className="w-5 h-5 text-purple-400" />
-            </div>
-          )}
+      {/* 遮罩层 - 动画期间显示 */}
+      {showWelcomeAnimation && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 flex items-center justify-center">
+          <div className="text-center text-white">
+            <div className="text-2xl font-bold mb-2">智能AI搜索</div>
+            <div className="text-sm opacity-80">正在为您准备最佳体验...</div>
+          </div>
+        </div>
+      )}
+
+      {/* 原有页面内容 - 动画完成后显示 */}
+      <div
+        className={`transition-opacity duration-1000 ${
+          showWelcomeAnimation ? "opacity-0 pointer-events-none" : "opacity-100"
+        }`}
+      >
+        {/* 顶部导航栏 */}
+        <header className="bg-blue-600 text-white px-4 py-3 flex items-center justify-between">
+          <h1 className="text-lg font-medium">智能AI搜索</h1>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push("/conversations")}
+              className="p-2 hover:bg-blue-700 rounded transition-colors relative group"
+              title="对话记录"
+            >
+              <MessageSquare className="w-5 h-5" />
+              <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                对话记录
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                setShowHistory(!showHistory)
+                if (!showHistory) loadHistory()
+              }}
+              className="p-2 hover:bg-blue-700 rounded transition-colors relative group"
+              title="搜索历史"
+            >
+              <History className="w-5 h-5" />
+              {searchHistory.length > 0 && (
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-xs flex items-center justify-center">
+                  {searchHistory.length > 9 ? "9+" : searchHistory.length}
+                </div>
+              )}
+              <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                搜索历史
+              </span>
+            </button>
+            <button
+              onClick={() => router.push("/favorites")}
+              className="p-2 hover:bg-blue-700 rounded transition-colors relative group"
+              title="我的收藏"
+            >
+              <Heart className="w-5 h-5" />
+              <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                我的收藏
+              </span>
+            </button>
+            <button
+              onClick={() => router.push("/analytics")}
+              className="p-2 hover:bg-blue-700 rounded transition-colors relative group"
+              title="学习分析"
+            >
+              <BarChart3 className="w-5 h-5" />
+              <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                学习分析
+              </span>
+            </button>
+            <button className="p-2 hover:bg-blue-700 rounded transition-colors relative group" title="设置">
+              <Settings className="w-5 h-5" />
+              <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                设置
+              </span>
+            </button>
+          </div>
+        </header>
+
+        <div className="flex">
+          {/* 左侧菜单 - 简化设计 */}
+          <aside className="hidden md:block w-16 bg-white border-r border-gray-200 min-h-screen">
+            <nav className="flex flex-col items-center py-4 space-y-4">
+              {/* 主要功能 - 已开发 */}
+              <button
+                onClick={() => handleMainMenuClick("community")}
+                className="p-3 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all relative group"
+                title="学习社区"
+              >
+                <Users className="w-6 h-6" />
+                <span className="absolute left-16 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap ml-2">
+                  学习社区
+                </span>
+              </button>
+
+              <button
+                onClick={() => handleMainMenuClick("knowledge-graph")}
+                className="p-3 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all relative group"
+                title="知识图谱"
+              >
+                <Brain className="w-6 h-6" />
+                <span className="absolute left-16 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap ml-2">
+                  知识图谱
+                </span>
+              </button>
+
+              <button
+                onClick={() => handleMainMenuClick("learning-path")}
+                className="p-3 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all relative group"
+                title="学习路径"
+              >
+                <GraduationCap className="w-6 h-6" />
+                <span className="absolute left-16 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap ml-2">
+                  学习路径
+                </span>
+              </button>
+
+              <button
+                onClick={() => handleMainMenuClick("mindmap")}
+                className="p-3 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all relative group"
+                title="思维导图"
+              >
+                <Map className="w-6 h-6" />
+                <span className="absolute left-16 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap ml-2">
+                  思维导图
+                </span>
+              </button>
+
+              {/* 分隔线 */}
+              <div className="w-8 h-px bg-gray-200 my-2"></div>
+
+              {/* 更多工具 - 下拉菜单 */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowMoreTools(!showMoreTools)}
+                  className="p-3 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all relative group"
+                  title="更多工具"
+                >
+                  <MoreHorizontal className="w-6 h-6" />
+                  <span className="absolute left-16 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap ml-2">
+                    更多工具
+                  </span>
+                </button>
+
+                {/* 下拉菜单 */}
+                {showMoreTools && (
+                  <div className="absolute left-16 top-0 bg-white border rounded-lg shadow-xl min-w-[200px] z-30 ml-2">
+                    <div className="p-2 border-b bg-gray-50 flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-800 text-sm">更多工具</h3>
+                      <button onClick={() => setShowMoreTools(false)} className="p-1 hover:bg-gray-200 rounded">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {moreTools.map((tool) => {
+                        const IconComponent = tool.icon
+                        return (
+                          <button
+                            key={tool.id}
+                            onClick={() => handleMoreToolClick(tool.id)}
+                            className="w-full text-left p-3 hover:bg-gray-50 flex items-center gap-3 group"
+                          >
+                            <IconComponent className="w-5 h-5 text-gray-500 group-hover:text-blue-600" />
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-gray-800">{tool.name}</div>
+                              <div className="text-xs text-gray-500">{tool.description}</div>
+                            </div>
+                            <div className="text-xs text-orange-500 bg-orange-50 px-2 py-1 rounded">开发中</div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </nav>
+          </aside>
+
+          {/* 主内容区域 */}
+          <main className="flex-1 flex flex-col items-center justify-center px-8 relative">
+            {/* 历史记录面板 */}
+            {showHistory && (
+              <div className="absolute top-4 right-4 w-full md:w-96 max-w-sm md:max-w-none bg-white rounded-lg shadow-xl border z-30 max-h-96 overflow-hidden">
+                <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
+                  <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                    <History className="w-5 h-5" />
+                    搜索历史
+                  </h3>
+                  <button onClick={() => setShowHistory(false)} className="p-1 hover:bg-gray-200 rounded">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {searchHistory.length === 0 ? (
+                    <div className="p-8 text-center text-gray-500">
+                      <History className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>暂无搜索历史</p>
+                      <p className="text-sm mt-1">开始您的第一次搜索吧！</p>
+                    </div>
+                  ) : (
+                    <div className="p-2">
+                      {searchHistory.slice(0, 10).map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => handleHistoryClick(item)}
+                          className="w-full text-left p-3 hover:bg-gray-50 rounded-lg group flex items-start gap-3"
+                        >
+                          <Clock className="w-4 h-4 text-gray-400 mt-1 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 line-clamp-2">{item.question}</p>
+                            <p className="text-xs text-gray-500 mt-1">{formatTime(item.timestamp)}</p>
+                          </div>
+                          <button
+                            onClick={(e) => handleDeleteHistory(item.id, e)}
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-opacity"
+                          >
+                            <X className="w-3 h-3 text-gray-400" />
+                          </button>
+                        </button>
+                      ))}
+                      {searchHistory.length > 0 && (
+                        <div className="p-3 border-t">
+                          <button
+                            onClick={() => {
+                              HistoryManager.clearHistory()
+                              loadHistory()
+                            }}
+                            className="text-sm text-red-600 hover:text-red-700"
+                          >
+                            清除所有历史记录
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 搜索表单 */}
+            <form onSubmit={handleSubmit} className="w-full max-w-4xl w-full px-4 md:px-0 relative">
+              <div className="relative">
+                <div className="relative">
+                  <textarea
+                    value={question}
+                    onChange={(e) => handleQuestionChange(e.target.value)}
+                    placeholder="请输入您的问题..."
+                    className="w-full min-h-[120px] md:min-h-[120px] p-4 md:p-6 pr-20 border-2 border-blue-500 rounded-2xl resize-none focus:outline-none focus:border-blue-600 text-gray-800 text-base md:text-lg leading-relaxed"
+                    disabled={isSubmitting}
+                  />
+
+                  {/* 输入框内的功能按钮 */}
+                  <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                    {/* 语音输入按钮 */}
+                    <button
+                      type="button"
+                      onClick={isRecording ? stopRecording : startRecording}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isRecording
+                          ? "bg-red-500 text-white animate-pulse"
+                          : "text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                      }`}
+                      title={isRecording ? "停止录音" : "语音输入"}
+                    >
+                      {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    </button>
+
+                    {/* 文件上传按钮 */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowFileUpload(!showFileUpload)}
+                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="上传文件"
+                      >
+                        <Paperclip className="w-5 h-5" />
+                      </button>
+
+                      {/* 文件上传选项 */}
+                      {showFileUpload && (
+                        <div className="absolute bottom-full right-0 mb-2 bg-white border rounded-lg shadow-lg p-2 min-w-[120px]">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded"
+                          >
+                            <Paperclip className="w-4 h-4" />
+                            上传文件
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => imageInputRef.current?.click()}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded"
+                          >
+                            <Camera className="w-4 h-4" />
+                            上传图片
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 发送按钮 */}
+                    <button
+                      type="submit"
+                      disabled={!question.trim() || isSubmitting}
+                      className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="发送"
+                    >
+                      {isSubmitting ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Send className="w-5 h-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 智能提示 - 当用户输入时显示匹配的历史记录 */}
+                {question.trim() && filteredHistory.length > 0 && !showHistory && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-lg border z-20 max-h-48 overflow-y-auto">
+                    <div className="p-2">
+                      <div className="text-xs text-gray-500 px-3 py-2">相关搜索历史</div>
+                      {filteredHistory.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => handleHistoryClick(item)}
+                          className="w-full text-left p-3 hover:bg-gray-50 rounded-lg flex items-center gap-3"
+                        >
+                          <Clock className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <span className="text-sm text-gray-700 truncate">{item.question}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </form>
+
+            {/* 隐藏的文件输入 */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx,.txt,.md"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+          </main>
         </div>
       </div>
+
+      {/* 点击外部关闭菜单 */}
+      {showFileUpload && <div className="fixed inset-0 z-10" onClick={() => setShowFileUpload(false)} />}
+      {showMoreTools && <div className="fixed inset-0 z-20" onClick={() => setShowMoreTools(false)} />}
+
+      {/* 自定义动画样式 */}
+      <style jsx>{`
+        @keyframes bounce-in {
+          0% {
+            transform: translate(-50%, -50%) scale(0.3);
+            opacity: 0;
+          }
+          50% {
+            transform: translate(-50%, -50%) scale(1.1);
+            opacity: 1;
+          }
+          70% {
+            transform: translate(-50%, -50%) scale(0.9);
+          }
+          100% {
+            transform: translate(-50%, -50%) scale(1);
+          }
+        }
+
+        @keyframes bubble-in {
+          0% {
+            transform: scale(0) translateY(10px);
+            opacity: 0;
+          }
+          50% {
+            transform: scale(1.1) translateY(-5px);
+          }
+          100% {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+          }
+        }
+
+        .line-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+      `}</style>
     </div>
   )
 }

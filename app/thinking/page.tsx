@@ -1,427 +1,201 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import {
-  Brain,
-  Search,
-  FileText,
-  ImageIcon,
-  Mic,
-  CheckCircle,
-  Clock,
-  Zap,
-  Target,
-  Lightbulb,
-  ArrowRight,
-  Sparkles,
-} from "lucide-react"
-
-interface ThinkingStep {
-  id: string
-  title: string
-  description: string
-  status: "pending" | "processing" | "completed" | "error"
-  progress: number
-  icon: React.ComponentType<any>
-  estimatedTime: number
-  details?: string[]
-}
+import { ArrowLeft, Brain, Search, Database, Lightbulb, Check } from "lucide-react"
+import { HistoryManager } from "@/lib/history"
+import { ConversationManager } from "@/lib/conversation"
 
 export default function ThinkingPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const query = searchParams.get("query") || ""
-  const type = searchParams.get("type") || "text"
+  const question = searchParams.get("q") || ""
 
   const [currentStep, setCurrentStep] = useState(0)
-  const [steps, setSteps] = useState<ThinkingStep[]>([])
-  const [isComplete, setIsComplete] = useState(false)
-  const [totalProgress, setTotalProgress] = useState(0)
-  const [startTime] = useState(Date.now())
-  const [elapsedTime, setElapsedTime] = useState(0)
+  const [completedSteps, setCompletedSteps] = useState<number[]>([])
+  const [progress, setProgress] = useState(0)
 
-  // 根据查询类型初始化步骤
+  const thinkingSteps = [
+    {
+      id: 0,
+      title: "正在理解您的问题...",
+      description: "分析问题关键词和语义",
+      icon: Brain,
+      duration: 2000,
+    },
+    {
+      id: 1,
+      title: "正在知识库中检索相关信息...",
+      description: "搜索相关文档和资料",
+      icon: Database,
+      duration: 2500,
+    },
+    {
+      id: 2,
+      title: "正在联网获取最新数据...",
+      description: "获取实时信息和最新观点",
+      icon: Search,
+      duration: 3000,
+    },
+    {
+      id: 3,
+      title: "正在整合分析结果...",
+      description: "综合信息生成最佳答案",
+      icon: Lightbulb,
+      duration: 2000,
+    },
+  ]
+
   useEffect(() => {
-    const initSteps = () => {
-      const baseSteps: ThinkingStep[] = [
-        {
-          id: "analyze",
-          title: "分析问题",
-          description: "理解您的问题并确定最佳解答策略",
-          status: "pending",
-          progress: 0,
-          icon: Brain,
-          estimatedTime: 2000,
-          details: ["解析问题关键词", "识别问题类型", "确定回答策略"],
-        },
-        {
-          id: "search",
-          title: "搜索知识",
-          description: "在知识库中查找相关信息",
-          status: "pending",
-          progress: 0,
-          icon: Search,
-          estimatedTime: 3000,
-          details: ["检索相关文档", "匹配知识点", "筛选最佳答案"],
-        },
-        {
-          id: "process",
-          title: "处理信息",
-          description: "整合信息并生成结构化回答",
-          status: "pending",
-          progress: 0,
-          icon: Zap,
-          estimatedTime: 4000,
-          details: ["信息去重整合", "逻辑结构组织", "内容质量检查"],
-        },
-        {
-          id: "optimize",
-          title: "优化回答",
-          description: "完善答案并添加相关建议",
-          status: "pending",
-          progress: 0,
-          icon: Target,
-          estimatedTime: 2000,
-          details: ["答案完整性检查", "添加相关链接", "生成后续建议"],
-        },
-      ]
+    const processSteps = async () => {
+      for (let i = 0; i < thinkingSteps.length; i++) {
+        setCurrentStep(i)
+        setProgress(((i + 1) / thinkingSteps.length) * 100)
 
-      // 根据输入类型添加特定步骤
-      if (type === "file") {
-        baseSteps.unshift({
-          id: "upload",
-          title: "处理文件",
-          description: "分析上传的文件内容",
-          status: "pending",
-          progress: 0,
-          icon: FileText,
-          estimatedTime: 3000,
-          details: ["文件格式识别", "内容提取", "文本预处理"],
-        })
-      } else if (type === "image") {
-        baseSteps.unshift({
-          id: "vision",
-          title: "图像识别",
-          description: "分析图像内容并提取信息",
-          status: "pending",
-          progress: 0,
-          icon: ImageIcon,
-          estimatedTime: 4000,
-          details: ["图像内容识别", "文字提取(OCR)", "场景理解"],
-        })
-      } else if (type === "voice") {
-        baseSteps.unshift({
-          id: "speech",
-          title: "语音识别",
-          description: "将语音转换为文字",
-          status: "pending",
-          progress: 0,
-          icon: Mic,
-          estimatedTime: 2000,
-          details: ["语音信号处理", "语音转文字", "语义理解"],
-        })
+        await new Promise((resolve) => setTimeout(resolve, thinkingSteps[i].duration))
+
+        setCompletedSteps((prev) => [...prev, i])
       }
 
-      setSteps(baseSteps)
-    }
+      // 所有步骤完成后，等待1秒然后跳转到结果页
+      setTimeout(() => {
+        // 更新历史记录，添加简短摘要
+        HistoryManager.addHistory(question, "AI正在为您分析这个问题...")
 
-    initSteps()
-  }, [type])
+        // 创建新的对话线程
+        const conversation = ConversationManager.createConversation(question)
 
-  // 计算总进度
-  useEffect(() => {
-    const totalSteps = steps.length
-    if (totalSteps === 0) return
-
-    const completedSteps = steps.filter((step) => step.status === "completed").length
-    const currentStepProgress = steps[currentStep]?.progress || 0
-
-    const progress = totalSteps > 0 ? ((completedSteps + currentStepProgress / 100) / totalSteps) * 100 : 0
-
-    setTotalProgress(Math.min(progress, 100))
-  }, [steps, currentStep])
-
-  // 更新经过时间
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setElapsedTime(Date.now() - startTime)
-    }, 100)
-
-    return () => clearInterval(timer)
-  }, [startTime])
-
-  // 执行思考步骤
-  useEffect(() => {
-    if (steps.length === 0) return
-
-    const executeStep = async (stepIndex: number) => {
-      if (stepIndex >= steps.length) {
-        setIsComplete(true)
-        // 延迟跳转到结果页面
-        setTimeout(() => {
-          router.push(`/results?query=${encodeURIComponent(query)}&type=${type}`)
-        }, 1500)
-        return
-      }
-
-      const step = steps[stepIndex]
-
-      // 更新步骤状态为处理中
-      setSteps((prev) => prev.map((s, i) => (i === stepIndex ? { ...s, status: "processing" as const } : s)))
-
-      // 模拟步骤执行过程
-      let currentProgress = 0
-      const progressInterval = setInterval(() => {
-        currentProgress += Math.random() * 15 + 5 // 5-20% 增量
-        const newProgress = Math.min(currentProgress, 100)
-
-        setSteps((prev) =>
-          prev.map((s, i) => {
-            if (i === stepIndex) {
-              return { ...s, progress: newProgress }
-            }
-            return s
-          }),
+        // 添加AI回答到对话中
+        ConversationManager.addMessage(
+          conversation.id,
+          "assistant",
+          "AI正在为您分析这个问题...",
+          conversation.messages[0].id,
+          {
+            confidence: 0.9,
+            processingTime: 2000,
+            sources: ["知识库", "在线搜索"],
+          },
         )
 
-        if (newProgress >= 100) {
-          clearInterval(progressInterval)
-          // 标记为完成并继续下一步
-          setSteps((prev) =>
-            prev.map((s, i) => (i === stepIndex ? { ...s, status: "completed" as const, progress: 100 } : s)),
-          )
-
-          // 延迟后执行下一步
-          setTimeout(() => {
-            if (stepIndex + 1 < steps.length) {
-              setCurrentStep(stepIndex + 1)
-            } else {
-              // 所有步骤完成
-              setIsComplete(true)
-              setTimeout(() => {
-                router.push(`/results?query=${encodeURIComponent(query)}&type=${type}`)
-              }, 1500)
-            }
-          }, 500)
-        }
-      }, step.estimatedTime / 20) // 分20次更新进度
+        // 跳转时携带对话ID
+        router.push(`/results?q=${encodeURIComponent(question)}&conversationId=${conversation.id}`)
+      }, 1000)
     }
 
-    // 开始执行当前步骤
-    if (currentStep < steps.length && steps[currentStep]?.status === "pending") {
-      executeStep(currentStep)
+    if (question) {
+      processSteps()
     }
-  }, [currentStep, steps, query, type, router])
-
-  const formatTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000)
-    return `${seconds}秒`
-  }
-
-  const getStepStatusIcon = (status: ThinkingStep["status"]) => {
-    switch (status) {
-      case "completed":
-        return <CheckCircle className="w-5 h-5 text-green-500" />
-      case "processing":
-        return <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-      case "error":
-        return <div className="w-5 h-5 bg-red-500 rounded-full" />
-      default:
-        return <Clock className="w-5 h-5 text-gray-400" />
-    }
-  }
+  }, [question, router])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* 顶部进度条 */}
-      <div className="fixed top-0 left-0 w-full h-1 bg-gray-200 z-50">
-        <div
-          className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300 ease-out"
-          style={{ width: `${totalProgress}%` }}
-        />
-      </div>
-
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* 头部信息 */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full mb-4">
-            <Brain className="w-8 h-8 text-white animate-pulse" />
-          </div>
-
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">AI正在思考中...</h1>
-
-          <p className="text-gray-600 mb-4">正在为您的问题寻找最佳答案</p>
-
-          {/* 查询内容显示 */}
-          <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 max-w-2xl mx-auto">
-            <div className="flex items-start space-x-3">
-              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                {type === "file" ? (
-                  <FileText className="w-4 h-4 text-blue-600" />
-                ) : type === "image" ? (
-                  <ImageIcon className="w-4 h-4 text-blue-600" />
-                ) : type === "voice" ? (
-                  <Mic className="w-4 h-4 text-blue-600" />
-                ) : (
-                  <Search className="w-4 h-4 text-blue-600" />
-                )}
-              </div>
-              <div className="flex-1 text-left">
-                <p className="text-gray-900 font-medium">{query}</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  {type === "file" && "文件上传查询"}
-                  {type === "image" && "图像识别查询"}
-                  {type === "voice" && "语音输入查询"}
-                  {type === "text" && "文本搜索查询"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* 进度信息 */}
-          <div className="flex items-center justify-center space-x-6 mt-6 text-sm text-gray-600">
-            <div className="flex items-center space-x-2">
-              <Sparkles className="w-4 h-4" />
-              <span>进度: {Math.round(totalProgress)}%</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Clock className="w-4 h-4" />
-              <span>用时: {formatTime(elapsedTime)}</span>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* 顶部导航栏 */}
+      <header className="bg-blue-600 text-white px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()} className="p-2 hover:bg-blue-700 rounded">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-lg font-medium">智能AI搜索 - 正在思考</h1>
         </div>
+      </header>
 
-        {/* 思考步骤 */}
-        <div className="space-y-4">
-          {steps.map((step, index) => {
-            const Icon = step.icon
-            const isActive = index === currentStep
-            const isCompleted = step.status === "completed"
-            const isProcessing = step.status === "processing"
+      <div className="flex items-center justify-center min-h-[calc(100vh-64px)] px-8">
+        <div className="w-full max-w-2xl bg-white rounded-2xl shadow-lg p-8">
+          {/* 问题回显 */}
+          <div className="mb-8 p-4 bg-blue-50 rounded-xl">
+            <h2 className="text-sm text-blue-600 font-medium mb-2">您的问题：</h2>
+            <p className="text-gray-800 leading-relaxed">{question}</p>
+          </div>
 
-            return (
+          {/* 进度条 */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700">处理进度</span>
+              <span className="text-sm text-gray-500">{Math.round(progress)}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
               <div
-                key={step.id}
-                className={`bg-white rounded-lg p-6 shadow-sm border transition-all duration-300 ${
-                  isActive
-                    ? "border-blue-300 shadow-md scale-[1.02]"
-                    : isCompleted
-                      ? "border-green-200 bg-green-50"
-                      : "border-gray-200"
-                }`}
-              >
-                <div className="flex items-start space-x-4">
+                className="bg-blue-600 h-2 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+
+          {/* 思考步骤 */}
+          <div className="space-y-6">
+            {thinkingSteps.map((step, index) => {
+              const isActive = currentStep === index
+              const isCompleted = completedSteps.includes(index)
+              const IconComponent = step.icon
+
+              return (
+                <div key={step.id} className="flex items-start gap-4">
                   {/* 步骤图标 */}
                   <div
-                    className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                      isCompleted ? "bg-green-100" : isProcessing ? "bg-blue-100" : "bg-gray-100"
-                    }`}
+                    className={`
+                    w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300
+                    ${
+                      isCompleted
+                        ? "bg-green-100 text-green-600"
+                        : isActive
+                          ? "bg-blue-100 text-blue-600"
+                          : "bg-gray-100 text-gray-400"
+                    }
+                  `}
                   >
                     {isCompleted ? (
-                      <CheckCircle className="w-6 h-6 text-green-600" />
-                    ) : isProcessing ? (
-                      <Icon className="w-6 h-6 text-blue-600 animate-pulse" />
+                      <Check className="w-6 h-6" />
                     ) : (
-                      <Icon className="w-6 h-6 text-gray-500" />
+                      <IconComponent className={`w-6 h-6 ${isActive ? "animate-pulse" : ""}`} />
                     )}
                   </div>
 
                   {/* 步骤内容 */}
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3
-                        className={`text-lg font-semibold ${
-                          isCompleted ? "text-green-800" : isProcessing ? "text-blue-800" : "text-gray-700"
-                        }`}
-                      >
-                        {step.title}
-                      </h3>
-                      {getStepStatusIcon(step.status)}
-                    </div>
-
-                    <p
-                      className={`text-sm mb-3 ${
-                        isCompleted ? "text-green-600" : isProcessing ? "text-blue-600" : "text-gray-600"
-                      }`}
+                  <div className="flex-1 min-w-0">
+                    <h3
+                      className={`
+                      text-lg font-medium transition-colors duration-300
+                      ${isCompleted ? "text-green-700" : isActive ? "text-blue-700" : "text-gray-500"}
+                    `}
                     >
-                      {step.description}
-                    </p>
+                      {step.title}
+                    </h3>
+                    <p className="text-gray-600 text-sm mt-1">{step.description}</p>
 
-                    {/* 进度条 */}
-                    {(isProcessing || isCompleted) && (
-                      <div className="mb-3">
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                          <span>处理进度</span>
-                          <span>{Math.round(step.progress)}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
+                    {/* 活动指示器 */}
+                    {isActive && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
                           <div
-                            className={`h-2 rounded-full transition-all duration-300 ${
-                              isCompleted ? "bg-green-500" : "bg-blue-500"
-                            }`}
-                            style={{ width: `${step.progress}%` }}
-                          />
+                            className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.1s" }}
+                          ></div>
+                          <div
+                            className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.2s" }}
+                          ></div>
                         </div>
-                      </div>
-                    )}
-
-                    {/* 详细步骤 */}
-                    {(isProcessing || isCompleted) && step.details && (
-                      <div className="space-y-1">
-                        {step.details.map((detail, detailIndex) => {
-                          const isDetailCompleted =
-                            isCompleted || (isProcessing && detailIndex < Math.floor(step.progress / 33.33))
-
-                          return (
-                            <div key={detailIndex} className="flex items-center space-x-2 text-xs">
-                              <div
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  isDetailCompleted ? "bg-green-500" : "bg-gray-300"
-                                }`}
-                              />
-                              <span className={isDetailCompleted ? "text-green-600" : "text-gray-500"}>{detail}</span>
-                            </div>
-                          )
-                        })}
+                        <span className="text-xs text-blue-600">处理中...</span>
                       </div>
                     )}
                   </div>
                 </div>
+              )
+            })}
+          </div>
+
+          {/* 完成提示 */}
+          {completedSteps.length === thinkingSteps.length && (
+            <div className="mt-8 p-4 bg-green-50 rounded-xl text-center">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Check className="w-6 h-6 text-green-600" />
               </div>
-            )
-          })}
+              <p className="text-green-700 font-medium">分析完成！正在为您生成答案...</p>
+            </div>
+          )}
         </div>
-
-        {/* 完成状态 */}
-        {isComplete && (
-          <div className="mt-8 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-              <CheckCircle className="w-8 h-8 text-green-600" />
-            </div>
-
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">思考完成！</h2>
-
-            <p className="text-gray-600 mb-6">已为您准备好详细的答案，正在跳转到结果页面...</p>
-
-            <div className="flex items-center justify-center space-x-2 text-blue-600">
-              <span>正在跳转</span>
-              <ArrowRight className="w-4 h-4 animate-pulse" />
-            </div>
-          </div>
-        )}
-
-        {/* 底部提示 */}
-        {!isComplete && (
-          <div className="mt-8 text-center">
-            <div className="inline-flex items-center space-x-2 text-sm text-gray-500 bg-white rounded-full px-4 py-2 shadow-sm border border-gray-200">
-              <Lightbulb className="w-4 h-4" />
-              <span>AI正在运用深度学习技术为您分析问题</span>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

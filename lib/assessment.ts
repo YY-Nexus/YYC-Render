@@ -397,36 +397,6 @@ export class AssessmentManager {
     }
   }
 
-  // Simple obfuscation for localStorage
-  // NOTE: This uses base64 encoding for basic obfuscation only, NOT encryption.
-  // SECURITY WARNING: localStorage is not secure for sensitive data.
-  // For production use:
-  // 1. Store certificates server-side with secure authentication
-  // 2. Use Web Crypto API (AES-GCM) for client-side encryption if needed
-  // 3. Consider using encrypted IndexedDB with proper key management
-  // 4. Implement certificate verification through a secure API endpoint
-  private static encryptData(data: string): string {
-    if (typeof window === "undefined" || typeof btoa === "undefined") {
-      return data
-    }
-    try {
-      return btoa(encodeURIComponent(data))
-    } catch {
-      return data
-    }
-  }
-
-  private static decryptData(data: string): string {
-    if (typeof window === "undefined" || typeof atob === "undefined") {
-      return data
-    }
-    try {
-      return decodeURIComponent(atob(data))
-    } catch {
-      return data
-    }
-  }
-
   // 证书管理
   static generateCertificate(
     userId: string,
@@ -452,28 +422,14 @@ export class AssessmentManager {
     certificates.unshift(certificate)
 
     if (typeof window !== "undefined") {
-      const encryptedData = this.encryptData(JSON.stringify(certificates))
-      localStorage.setItem(this.CERTIFICATES_KEY, encryptedData)
+      localStorage.setItem(this.CERTIFICATES_KEY, JSON.stringify(certificates))
     }
 
     return certificate
   }
 
   private static generateVerificationCode(): string {
-    // Use cryptographically secure random numbers
-    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-      const array = new Uint8Array(24) // Use sufficient bytes for 24-character code
-      crypto.getRandomValues(array)
-      // Use base64url encoding for verification codes
-      // Convert bytes to string safely without call stack issues
-      const base64 = btoa(Array.from(array, byte => String.fromCharCode(byte)).join(''))
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=/g, '')
-      return base64.substring(0, 24)
-    }
-    // For Node.js environments, crypto should be available via require('crypto').webcrypto
-    throw new Error('Cryptographic random number generator not available for security-critical operations')
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
   }
 
   static getCertificates(userId?: string): Certificate[] {
@@ -481,10 +437,7 @@ export class AssessmentManager {
 
     try {
       const stored = localStorage.getItem(this.CERTIFICATES_KEY)
-      if (!stored) return []
-      
-      const decryptedData = this.decryptData(stored)
-      const allCertificates: Certificate[] = JSON.parse(decryptedData)
+      const allCertificates: Certificate[] = stored ? JSON.parse(stored) : []
 
       if (userId) {
         return allCertificates.filter((c) => c.userId === userId)

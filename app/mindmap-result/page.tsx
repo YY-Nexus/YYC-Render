@@ -1,85 +1,147 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, Download, Edit3, ZoomIn, ZoomOut, RotateCcw } from "lucide-react"
-import { MindMapManager, type MindMapData } from "@/lib/mindmap"
+import type React from "react"
+
+import { useState, useEffect, useRef } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
+import { ArrowLeft, Share2, Download, Settings, ZoomIn, ZoomOut, RotateCcw } from "lucide-react"
+import { MindMapGenerator, type MindMapData, type MindMapNode } from "@/lib/mindmap"
 
 export default function MindMapResultPage() {
-  const router = useRouter()
   const searchParams = useSearchParams()
-  const mindMapId = searchParams.get("id")
+  const router = useRouter()
+  const question = searchParams.get("q") || ""
+  const svgRef = useRef<SVGSVGElement>(null)
 
   const [mindMapData, setMindMapData] = useState<MindMapData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [selectedNode, setSelectedNode] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
-  const [panX, setPanX] = useState(0)
-  const [panY, setPanY] = useState(0)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
 
-  useEffect(() => {
-    if (mindMapId) {
-      const mindMap = MindMapManager.getMindMapById(mindMapId)
-      setMindMapData(mindMap)
-      setLoading(false)
-    }
-  }, [mindMapId])
+  // 模拟内容数据
+  const mockContent = `
+在智能学习的道路上坚持下去，是一个需要长期投入、心理调整和策略支持的过程。
+
+1. 找到学习的乐趣与意义
+学习不应只是枯燥的任务，而应是一个充满乐趣和挑战的过程。要明确学习的意义，认识到学习能为你带来哪些实际的好处。
+
+2. 保持积极的心态
+面对他人的反对态度，最重要的是保持冷静和理性。要以谦逊和包容的态度去回应，专注于自己的目标和成长。
+
+3. 制定合理的计划并坚持执行
+制定一个可行的学习计划，并坚定不移地执行下去。将学习目标分为多个阶段，每个阶段设定具体的目标和时间节点。
+
+4. 建立支持系统
+寻找志同道合的学习伙伴，加入学习社群，获得外部支持和鼓励。
+
+5. 持续自我激励
+设定小目标，庆祝每一个进步，保持学习的成就感和满足感。
+  `
+
+  const handleNodeClick = (nodeId: string) => {
+    setSelectedNode(selectedNode === nodeId ? null : nodeId)
+  }
 
   const handleZoomIn = () => {
-    setZoom((prev) => Math.min(prev + 0.2, 3))
+    setZoom((prev) => Math.min(prev * 1.2, 3))
   }
 
   const handleZoomOut = () => {
-    setZoom((prev) => Math.max(prev - 0.2, 0.5))
+    setZoom((prev) => Math.max(prev / 1.2, 0.3))
   }
 
-  const handleResetView = () => {
+  const handleReset = () => {
     setZoom(1)
-    setPanX(0)
-    setPanY(0)
+    setPan({ x: 0, y: 0 })
+    setSelectedNode(null)
   }
 
-  const handleExport = () => {
-    if (mindMapData) {
-      const exportData = MindMapManager.exportMindMap(mindMapData.id)
-      const blob = new Blob([exportData], { type: "application/json" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `mindmap_${mindMapData.title}.json`
-      a.click()
-      URL.revokeObjectURL(url)
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true)
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      setPan({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
+      })
     }
   }
 
-  const handleEdit = () => {
-    if (mindMapData) {
-      router.push(`/generate/mindmap?id=${mindMapData.id}`)
-    }
+  const handleMouseUp = () => {
+    setIsDragging(false)
   }
 
-  if (loading) {
+  const renderNode = (node: MindMapNode) => {
+    const isSelected = selectedNode === node.id
+    const isRoot = node.level === 0
+    const radius = isRoot ? 80 : node.level === 1 ? 60 : 40
+    const fontSize = isRoot ? 14 : node.level === 1 ? 12 : 10
+
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">正在加载思维导图...</p>
-        </div>
-      </div>
+      <g key={node.id}>
+        {/* 连接线 */}
+        {node.children.map((child) => (
+          <line
+            key={`line-${node.id}-${child.id}`}
+            x1={node.x}
+            y1={node.y}
+            x2={child.x}
+            y2={child.y}
+            stroke={node.color || "#94A3B8"}
+            strokeWidth={node.level === 0 ? 3 : 2}
+            opacity={0.6}
+          />
+        ))}
+
+        {/* 节点圆圈 */}
+        <circle
+          cx={node.x}
+          cy={node.y}
+          r={radius}
+          fill={isSelected ? "#FEF3C7" : "white"}
+          stroke={node.color || "#94A3B8"}
+          strokeWidth={isSelected ? 4 : isRoot ? 3 : 2}
+          className="cursor-pointer transition-all duration-200 hover:stroke-4"
+          onClick={() => handleNodeClick(node.id)}
+        />
+
+        {/* 节点文本 */}
+        <foreignObject
+          x={node.x! - radius + 10}
+          y={node.y! - 10}
+          width={(radius - 10) * 2}
+          height={20}
+          className="pointer-events-none"
+        >
+          <div className="text-center text-gray-800 font-medium leading-tight" style={{ fontSize: `${fontSize}px` }}>
+            {node.text}
+          </div>
+        </foreignObject>
+
+        {/* 递归渲染子节点 */}
+        {node.children.map((child) => renderNode(child))}
+      </g>
     )
   }
+
+  useEffect(() => {
+    if (question && mockContent) {
+      const data = MindMapGenerator.generateMindMap(question, mockContent)
+      setMindMapData(data)
+    }
+  }, [question])
 
   if (!mindMapData) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">思维导图不存在</h2>
-          <p className="text-gray-600 mb-4">请检查链接是否正确</p>
-          <button
-            onClick={() => router.push("/")}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            返回首页
-          </button>
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">正在生成思维导图...</p>
         </div>
       </div>
     )
@@ -87,128 +149,117 @@ export default function MindMapResultPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* 顶部工具栏 */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="text-lg font-semibold text-gray-900">{mindMapData.title}</h1>
-                <p className="text-sm text-gray-600">创建于 {new Date(mindMapData.createdAt).toLocaleDateString()}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                <button onClick={handleZoomOut} className="p-2 hover:bg-white rounded-md" title="缩小">
-                  <ZoomOut className="w-4 h-4" />
-                </button>
-                <span className="px-2 text-sm font-medium">{Math.round(zoom * 100)}%</span>
-                <button onClick={handleZoomIn} className="p-2 hover:bg-white rounded-md" title="放大">
-                  <ZoomIn className="w-4 h-4" />
-                </button>
-                <button onClick={handleResetView} className="p-2 hover:bg-white rounded-md" title="重置视图">
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-              </div>
-
-              <button
-                onClick={handleEdit}
-                className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-              >
-                <Edit3 className="w-4 h-4" />
-                编辑
-              </button>
-
-              <button
-                onClick={handleExport}
-                className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                <Download className="w-4 h-4" />
-                导出
-              </button>
-            </div>
-          </div>
+      {/* 顶部导航栏 */}
+      <header className="bg-white border-b px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-lg font-medium">思维导图 - {question.slice(0, 30)}...</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <button className="p-2 hover:bg-gray-100 rounded">
+            <Settings className="w-5 h-5" />
+          </button>
+          <button className="px-3 py-1 bg-blue-600 text-white rounded text-sm flex items-center gap-1">
+            <Share2 className="w-4 h-4" />
+            分享
+          </button>
+          <button className="px-3 py-1 bg-green-600 text-white rounded text-sm flex items-center gap-1">
+            <Download className="w-4 h-4" />
+            导出
+          </button>
         </div>
       </header>
 
-      {/* 思维导图显示区域 */}
-      <div className="relative w-full h-screen overflow-hidden">
-        <div
-          className="absolute inset-0 transition-transform duration-200"
-          style={{
-            transform: `scale(${zoom}) translate(${panX}px, ${panY}px)`,
-            transformOrigin: "center center",
-          }}
-        >
-          <svg
-            width="100%"
-            height="100%"
-            className="absolute inset-0"
-            style={{
-              background: "radial-gradient(circle, #f1f5f9 1px, transparent 1px)",
-              backgroundSize: "20px 20px",
-            }}
-          >
-            {/* 渲染连接线 */}
-            {mindMapData.connections.map((connection, index) => {
-              const fromNode = mindMapData.nodes.find((n) => n.id === connection.from)
-              const toNode = mindMapData.nodes.find((n) => n.id === connection.to)
+      <div className="flex h-[calc(100vh-64px)]">
+        {/* 左侧控制面板 */}
+        <div className="w-64 bg-white border-r p-4 overflow-y-auto">
+          <div className="space-y-4">
+            {/* 缩放控制 */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="font-medium text-gray-900 mb-3">视图控制</h3>
+              <div className="space-y-2">
+                <button
+                  onClick={handleZoomIn}
+                  className="w-full flex items-center gap-2 px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-sm"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                  放大
+                </button>
+                <button
+                  onClick={handleZoomOut}
+                  className="w-full flex items-center gap-2 px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-sm"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                  缩小
+                </button>
+                <button
+                  onClick={handleReset}
+                  className="w-full flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  重置
+                </button>
+              </div>
+              <div className="mt-3 text-xs text-gray-500">当前缩放: {Math.round(zoom * 100)}%</div>
+            </div>
 
-              if (!fromNode || !toNode) return null
-
-              return (
-                <line
-                  key={index}
-                  x1={fromNode.x}
-                  y1={fromNode.y}
-                  x2={toNode.x}
-                  y2={toNode.y}
-                  stroke="#64748b"
-                  strokeWidth="2"
-                  opacity="0.6"
-                />
-              )
-            })}
-          </svg>
-
-          {/* 渲染节点 */}
-          {mindMapData.nodes.map((node) => (
-            <div
-              key={node.id}
-              className="absolute transform -translate-x-1/2 -translate-y-1/2"
-              style={{
-                left: node.x,
-                top: node.y,
-              }}
-            >
-              <div
-                className="px-4 py-3 rounded-xl shadow-lg border-2 min-w-[100px] text-center bg-white hover:shadow-xl transition-shadow duration-200"
-                style={{
-                  borderColor: node.color,
-                  backgroundColor: node.color + "10",
-                }}
-              >
-                <div className="font-medium text-sm" style={{ color: node.color }}>
-                  {node.text}
-                </div>
-
-                {node.level === 0 && <div className="mt-1 text-xs text-gray-500">主题</div>}
+            {/* 节点信息 */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="font-medium text-gray-900 mb-3">导图信息</h3>
+              <div className="space-y-2 text-sm text-gray-600">
+                <div>总节点数: {mindMapData.totalNodes}</div>
+                <div>主要分支: {mindMapData.rootNode.children.length}</div>
+                <div>层级深度: 3</div>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {/* 底部信息栏 */}
-      <div className="fixed bottom-4 left-4 bg-white rounded-lg shadow-lg p-3 border border-gray-200">
-        <div className="text-sm text-gray-600">
-          <div>节点数量: {mindMapData.nodes.length}</div>
-          <div>连接数量: {mindMapData.connections.length}</div>
-          <div>最后更新: {new Date(mindMapData.updatedAt).toLocaleString()}</div>
+            {/* 操作提示 */}
+            <div className="bg-blue-50 rounded-lg p-4">
+              <h3 className="font-medium text-blue-900 mb-2">操作提示</h3>
+              <div className="space-y-1 text-xs text-blue-700">
+                <div>• 点击节点查看详情</div>
+                <div>• 拖拽画布移动视图</div>
+                <div>• 使用控制按钮缩放</div>
+                <div>• 滚轮缩放（即将支持）</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 主要思维导图区域 */}
+        <div className="flex-1 relative overflow-hidden">
+          <svg
+            ref={svgRef}
+            className="w-full h-full cursor-move"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          >
+            <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+              {mindMapData.rootNode && renderNode(mindMapData.rootNode)}
+            </g>
+          </svg>
+
+          {/* 选中节点的详情面板 */}
+          {selectedNode && (
+            <div className="absolute bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-sm">
+              <h4 className="font-medium text-gray-900 mb-2">节点详情</h4>
+              <p className="text-sm text-gray-600">
+                {selectedNode === "root"
+                  ? "这是思维导图的中心主题，展示了您提出的核心问题。"
+                  : "这是思维导图的一个分支节点，包含了相关的概念或要点。"}
+              </p>
+              <button
+                onClick={() => setSelectedNode(null)}
+                className="mt-3 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+              >
+                关闭
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

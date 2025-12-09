@@ -1,495 +1,273 @@
 export interface KnowledgeNode {
   id: string
-  title: string
-  content: string
-  type: "concept" | "fact" | "process" | "example" | "definition"
-  category: string
-  tags: string[]
-  importance: number
-  difficulty: number
-  connections: Connection[]
-  metadata: {
-    createdAt: Date
-    updatedAt: Date
-    source?: string
-    confidence: number
-    verified: boolean
+  label: string
+  type: "concept" | "topic" | "skill" | "resource"
+  description?: string
+  difficulty: 1 | 2 | 3 | 4 | 5 // 难度等级
+  importance: number // 重要性权重 0-1
+  x?: number
+  y?: number
+  size?: number
+  color?: string
+  metadata?: {
+    tags?: string[]
+    sources?: string[]
+    lastUpdated?: number
+    learningTime?: number // 预估学习时间（分钟）
   }
-  position?: { x: number; y: number }
 }
 
-export interface Connection {
-  targetId: string
-  type: "prerequisite" | "related" | "example" | "application" | "opposite" | "part-of"
-  strength: number
+export interface KnowledgeEdge {
+  id: string
+  source: string
+  target: string
+  type: "prerequisite" | "related" | "contains" | "leads_to"
+  weight: number // 关系强度 0-1
   description?: string
-  bidirectional: boolean
 }
 
 export interface KnowledgeGraph {
-  id: string
-  title: string
-  description: string
   nodes: KnowledgeNode[]
-  domain: string
-  createdAt: Date
-  updatedAt: Date
-  stats: {
-    nodeCount: number
-    connectionCount: number
-    avgConnections: number
-    coverage: number
+  edges: KnowledgeEdge[]
+  metadata: {
+    title: string
+    description: string
+    createdAt: number
+    updatedAt: number
+    version: string
   }
 }
 
 export class KnowledgeGraphManager {
-  private graphs: Map<string, KnowledgeGraph> = new Map()
-  private nodeIndex: Map<string, string[]> = new Map() // keyword -> graphIds
+  private static readonly STORAGE_KEY = "ai-search-knowledge-graphs"
+  private static readonly NODE_COLORS = {
+    concept: "#3B82F6", // 蓝色
+    topic: "#10B981", // 绿色
+    skill: "#F59E0B", // 橙色
+    resource: "#8B5CF6", // 紫色
+  }
 
-  // 创建知识图谱
-  createGraph(title: string, description: string, domain: string): KnowledgeGraph {
-    const graph: KnowledgeGraph = {
-      id: `graph_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title,
-      description,
-      domain,
-      nodes: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      stats: {
-        nodeCount: 0,
-        connectionCount: 0,
-        avgConnections: 0,
-        coverage: 0,
-      },
+  static getKnowledgeGraphs(): KnowledgeGraph[] {
+    if (typeof window === "undefined") return []
+
+    try {
+      const stored = localStorage.getItem(this.STORAGE_KEY)
+      return stored ? JSON.parse(stored) : []
+    } catch {
+      return []
     }
-
-    this.graphs.set(graph.id, graph)
-    return graph
   }
 
-  // 添加知识节点
-  addNode(graphId: string, nodeData: Omit<KnowledgeNode, "id" | "connections" | "metadata">): KnowledgeNode {
-    const graph = this.graphs.get(graphId)
-    if (!graph) throw new Error("Graph not found")
+  static generateKnowledgeGraph(question: string, content: string): KnowledgeGraph {
+    const concepts = this.extractConcepts(content)
+    const nodes = this.createNodes(concepts)
+    const edges = this.createEdges(nodes, content)
 
-    const node: KnowledgeNode = {
-      ...nodeData,
-      id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      connections: [],
-      metadata: {
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        confidence: 0.8,
-        verified: false,
-      },
-    }
-
-    graph.nodes.push(node)
-    this.updateGraphStats(graphId)
-    this.updateNodeIndex(node, graphId)
-
-    return node
-  }
-
-  // 创建节点连接
-  createConnection(
-    graphId: string,
-    sourceId: string,
-    targetId: string,
-    connectionData: Omit<Connection, "targetId">,
-  ): void {
-    const graph = this.graphs.get(graphId)
-    if (!graph) throw new Error("Graph not found")
-
-    const sourceNode = graph.nodes.find((n) => n.id === sourceId)
-    const targetNode = graph.nodes.find((n) => n.id === targetId)
-
-    if (!sourceNode || !targetNode) throw new Error("Node not found")
-
-    const connection: Connection = {
-      ...connectionData,
-      targetId,
-    }
-
-    sourceNode.connections.push(connection)
-
-    // 如果是双向连接，也添加反向连接
-    if (connection.bidirectional) {
-      const reverseConnection: Connection = {
-        ...connectionData,
-        targetId: sourceId,
-      }
-      targetNode.connections.push(reverseConnection)
-    }
-
-    this.updateGraphStats(graphId)
-  }
-
-  // 智能连接推荐
-  suggestConnections(
-    graphId: string,
-    nodeId: string,
-  ): Array<{
-    targetNode: KnowledgeNode
-    suggestedType: Connection["type"]
-    confidence: number
-    reason: string
-  }> {
-    const graph = this.graphs.get(graphId)
-    if (!graph) return []
-
-    const sourceNode = graph.nodes.find((n) => n.id === nodeId)
-    if (!sourceNode) return []
-
-    const suggestions: Array<{
-      targetNode: KnowledgeNode
-      suggestedType: Connection["type"]
-      confidence: number
-      reason: string
-    }> = []
-
-    graph.nodes.forEach((targetNode) => {
-      if (targetNode.id === nodeId) return
-      if (sourceNode.connections.some((c) => c.targetId === targetNode.id)) return
-
-      // 基于标签相似度
-      const commonTags = sourceNode.tags.filter((tag) => targetNode.tags.includes(tag))
-      if (commonTags.length > 0) {
-        suggestions.push({
-          targetNode,
-          suggestedType: "related",
-          confidence: Math.min(0.9, commonTags.length * 0.3),
-          reason: `共同标签: ${commonTags.join(", ")}`,
-        })
-      }
-
-      // 基于类型关系
-      if (sourceNode.type === "concept" && targetNode.type === "example") {
-        suggestions.push({
-          targetNode,
-          suggestedType: "example",
-          confidence: 0.7,
-          reason: "概念与示例的关系",
-        })
-      }
-
-      // 基于难度层次
-      if (sourceNode.difficulty < targetNode.difficulty && sourceNode.category === targetNode.category) {
-        suggestions.push({
-          targetNode,
-          suggestedType: "prerequisite",
-          confidence: 0.6,
-          reason: "难度递进关系",
-        })
-      }
-
-      // 基于内容相似度
-      const contentSimilarity = this.calculateContentSimilarity(sourceNode.content, targetNode.content)
-      if (contentSimilarity > 0.3) {
-        suggestions.push({
-          targetNode,
-          suggestedType: "related",
-          confidence: contentSimilarity,
-          reason: "内容相似度高",
-        })
-      }
-    })
-
-    return suggestions.sort((a, b) => b.confidence - a.confidence).slice(0, 5)
-  }
-
-  // 查找学习路径
-  findLearningPath(graphId: string, startNodeId: string, endNodeId: string): KnowledgeNode[] {
-    const graph = this.graphs.get(graphId)
-    if (!graph) return []
-
-    const visited = new Set<string>()
-    const queue: Array<{ nodeId: string; path: string[] }> = [{ nodeId: startNodeId, path: [startNodeId] }]
-
-    while (queue.length > 0) {
-      const { nodeId, path } = queue.shift()!
-
-      if (nodeId === endNodeId) {
-        return path.map((id) => graph.nodes.find((n) => n.id === id)!).filter(Boolean)
-      }
-
-      if (visited.has(nodeId)) continue
-      visited.add(nodeId)
-
-      const node = graph.nodes.find((n) => n.id === nodeId)
-      if (!node) continue
-
-      // 优先选择前置条件连接
-      const sortedConnections = node.connections.sort((a, b) => {
-        const typeWeight = { prerequisite: 3, related: 2, example: 1, application: 1, opposite: 0, "part-of": 2 }
-        return (typeWeight[b.type] || 0) - (typeWeight[a.type] || 0)
-      })
-
-      sortedConnections.forEach((connection) => {
-        if (!visited.has(connection.targetId)) {
-          queue.push({
-            nodeId: connection.targetId,
-            path: [...path, connection.targetId],
-          })
-        }
-      })
-    }
-
-    return []
-  }
-
-  // 获取节点的邻居
-  getNodeNeighbors(graphId: string, nodeId: string, depth = 1): KnowledgeNode[] {
-    const graph = this.graphs.get(graphId)
-    if (!graph) return []
-
-    const visited = new Set<string>()
-    const neighbors: KnowledgeNode[] = []
-    const queue: Array<{ nodeId: string; currentDepth: number }> = [{ nodeId, currentDepth: 0 }]
-
-    while (queue.length > 0) {
-      const { nodeId: currentNodeId, currentDepth } = queue.shift()!
-
-      if (visited.has(currentNodeId) || currentDepth > depth) continue
-      visited.add(currentNodeId)
-
-      const node = graph.nodes.find((n) => n.id === currentNodeId)
-      if (!node) continue
-
-      if (currentDepth > 0) {
-        neighbors.push(node)
-      }
-
-      if (currentDepth < depth) {
-        node.connections.forEach((connection) => {
-          queue.push({
-            nodeId: connection.targetId,
-            currentDepth: currentDepth + 1,
-          })
-        })
-      }
-    }
-
-    return neighbors
-  }
-
-  // 搜索知识节点
-  searchNodes(
-    query: string,
-    domain?: string,
-  ): Array<{
-    node: KnowledgeNode
-    graphId: string
-    relevance: number
-  }> {
-    const results: Array<{
-      node: KnowledgeNode
-      graphId: string
-      relevance: number
-    }> = []
-
-    this.graphs.forEach((graph, graphId) => {
-      if (domain && graph.domain !== domain) return
-
-      graph.nodes.forEach((node) => {
-        let relevance = 0
-
-        // 标题匹配
-        if (node.title.toLowerCase().includes(query.toLowerCase())) {
-          relevance += 0.8
-        }
-
-        // 内容匹配
-        if (node.content.toLowerCase().includes(query.toLowerCase())) {
-          relevance += 0.6
-        }
-
-        // 标签匹配
-        node.tags.forEach((tag) => {
-          if (tag.toLowerCase().includes(query.toLowerCase())) {
-            relevance += 0.4
-          }
-        })
-
-        if (relevance > 0) {
-          results.push({ node, graphId, relevance })
-        }
-      })
-    })
-
-    return results.sort((a, b) => b.relevance - a.relevance)
-  }
-
-  // 获取图谱统计
-  getGraphStats(graphId: string) {
-    const graph = this.graphs.get(graphId)
-    if (!graph) return null
-
-    const nodesByType = graph.nodes.reduce(
-      (acc, node) => {
-        acc[node.type] = (acc[node.type] || 0) + 1
-        return acc
-      },
-      {} as Record<string, number>,
-    )
-
-    const connectionsByType = graph.nodes.reduce(
-      (acc, node) => {
-        node.connections.forEach((conn) => {
-          acc[conn.type] = (acc[conn.type] || 0) + 1
-        })
-        return acc
-      },
-      {} as Record<string, number>,
-    )
+    // 计算节点位置
+    this.calculateLayout(nodes, edges)
 
     return {
-      ...graph.stats,
-      nodesByType,
-      connectionsByType,
-      avgImportance: graph.nodes.reduce((sum, node) => sum + node.importance, 0) / graph.nodes.length,
-      avgDifficulty: graph.nodes.reduce((sum, node) => sum + node.difficulty, 0) / graph.nodes.length,
-    }
-  }
-
-  // 导出图谱
-  exportGraph(graphId: string): string {
-    const graph = this.graphs.get(graphId)
-    if (!graph) throw new Error("Graph not found")
-
-    return JSON.stringify(graph, null, 2)
-  }
-
-  // 导入图谱
-  importGraph(data: string): KnowledgeGraph {
-    const graph = JSON.parse(data) as KnowledgeGraph
-    graph.id = `graph_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    graph.createdAt = new Date()
-    graph.updatedAt = new Date()
-
-    this.graphs.set(graph.id, graph)
-
-    // 重建索引
-    graph.nodes.forEach((node) => {
-      this.updateNodeIndex(node, graph.id)
-    })
-
-    return graph
-  }
-
-  // 私有方法
-  private updateGraphStats(graphId: string): void {
-    const graph = this.graphs.get(graphId)
-    if (!graph) return
-
-    const totalConnections = graph.nodes.reduce((sum, node) => sum + node.connections.length, 0)
-
-    graph.stats = {
-      nodeCount: graph.nodes.length,
-      connectionCount: totalConnections,
-      avgConnections: graph.nodes.length > 0 ? totalConnections / graph.nodes.length : 0,
-      coverage: this.calculateCoverage(graph),
-    }
-
-    graph.updatedAt = new Date()
-  }
-
-  private updateNodeIndex(node: KnowledgeNode, graphId: string): void {
-    const keywords = [
-      ...node.title.toLowerCase().split(/\s+/),
-      ...node.tags.map((tag) => tag.toLowerCase()),
-      node.category.toLowerCase(),
-    ]
-
-    keywords.forEach((keyword) => {
-      if (!this.nodeIndex.has(keyword)) {
-        this.nodeIndex.set(keyword, [])
-      }
-      const graphIds = this.nodeIndex.get(keyword)!
-      if (!graphIds.includes(graphId)) {
-        graphIds.push(graphId)
-      }
-    })
-  }
-
-  private calculateContentSimilarity(content1: string, content2: string): number {
-    const words1 = content1.toLowerCase().split(/\s+/)
-    const words2 = content2.toLowerCase().split(/\s+/)
-
-    const intersection = words1.filter((word) => words2.includes(word))
-    const union = [...new Set([...words1, ...words2])]
-
-    return intersection.length / union.length
-  }
-
-  private calculateCoverage(graph: KnowledgeGraph): number {
-    if (graph.nodes.length === 0) return 0
-
-    const connectedNodes = new Set<string>()
-    graph.nodes.forEach((node) => {
-      if (node.connections.length > 0) {
-        connectedNodes.add(node.id)
-        node.connections.forEach((conn) => connectedNodes.add(conn.targetId))
-      }
-    })
-
-    return connectedNodes.size / graph.nodes.length
-  }
-
-  // 获取所有图谱
-  getAllGraphs(): KnowledgeGraph[] {
-    return Array.from(this.graphs.values())
-  }
-
-  // 获取图谱
-  getGraph(graphId: string): KnowledgeGraph | undefined {
-    return this.graphs.get(graphId)
-  }
-
-  // 删除图谱
-  deleteGraph(graphId: string): boolean {
-    return this.graphs.delete(graphId)
-  }
-
-  // 更新节点
-  updateNode(graphId: string, nodeId: string, updates: Partial<KnowledgeNode>): boolean {
-    const graph = this.graphs.get(graphId)
-    if (!graph) return false
-
-    const nodeIndex = graph.nodes.findIndex((n) => n.id === nodeId)
-    if (nodeIndex === -1) return false
-
-    graph.nodes[nodeIndex] = {
-      ...graph.nodes[nodeIndex],
-      ...updates,
+      nodes,
+      edges,
       metadata: {
-        ...graph.nodes[nodeIndex].metadata,
-        updatedAt: new Date(),
+        title: question.length > 50 ? question.slice(0, 50) + "..." : question,
+        description: "基于AI分析生成的知识图谱",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        version: "1.0",
       },
     }
-
-    this.updateGraphStats(graphId)
-    return true
   }
 
-  // 删除节点
-  deleteNode(graphId: string, nodeId: string): boolean {
-    const graph = this.graphs.get(graphId)
-    if (!graph) return false
+  private static extractConcepts(content: string): Array<{
+    name: string
+    type: KnowledgeNode["type"]
+    description: string
+    difficulty: number
+    importance: number
+  }> {
+    // 简化的概念提取逻辑
+    const concepts = []
 
-    // 删除节点
-    graph.nodes = graph.nodes.filter((n) => n.id !== nodeId)
+    // 提取关键概念
+    const keywordPatterns = [
+      { pattern: /学习方法|学习技巧|学习策略/g, type: "skill" as const, difficulty: 2 },
+      { pattern: /时间管理|计划制定|目标设定/g, type: "skill" as const, difficulty: 3 },
+      { pattern: /心理调节|心态调整|情绪管理/g, type: "concept" as const, difficulty: 4 },
+      { pattern: /知识体系|知识结构|学科知识/g, type: "topic" as const, difficulty: 3 },
+      { pattern: /实践应用|项目实战|案例分析/g, type: "resource" as const, difficulty: 4 },
+    ]
 
-    // 删除指向该节点的连接
-    graph.nodes.forEach((node) => {
-      node.connections = node.connections.filter((conn) => conn.targetId !== nodeId)
+    keywordPatterns.forEach((pattern, index) => {
+      const matches = content.match(pattern.pattern)
+      if (matches) {
+        matches.forEach((match) => {
+          concepts.push({
+            name: match,
+            type: pattern.type,
+            description: `与${match}相关的重要概念`,
+            difficulty: pattern.difficulty,
+            importance: 0.8 - index * 0.1,
+          })
+        })
+      }
     })
 
-    this.updateGraphStats(graphId)
-    return true
+    // 如果没有找到足够的概念，添加默认概念
+    if (concepts.length < 3) {
+      const defaultConcepts = [
+        { name: "核心理念", type: "concept" as const, description: "问题的核心思想", difficulty: 2, importance: 0.9 },
+        { name: "实施方法", type: "skill" as const, description: "具体的实施步骤", difficulty: 3, importance: 0.8 },
+        {
+          name: "相关资源",
+          type: "resource" as const,
+          description: "支持性资源和工具",
+          difficulty: 2,
+          importance: 0.7,
+        },
+        { name: "进阶应用", type: "topic" as const, description: "高级应用场景", difficulty: 4, importance: 0.6 },
+      ]
+      concepts.push(...defaultConcepts.slice(0, 6 - concepts.length))
+    }
+
+    return concepts.slice(0, 8) // 限制节点数量
+  }
+
+  private static createNodes(
+    concepts: Array<{
+      name: string
+      type: KnowledgeNode["type"]
+      description: string
+      difficulty: number
+      importance: number
+    }>,
+  ): KnowledgeNode[] {
+    return concepts.map((concept, index) => ({
+      id: `node-${index}`,
+      label: concept.name,
+      type: concept.type,
+      description: concept.description,
+      difficulty: Math.min(5, Math.max(1, concept.difficulty)) as 1 | 2 | 3 | 4 | 5,
+      importance: concept.importance,
+      size: 20 + concept.importance * 30,
+      color: this.NODE_COLORS[concept.type],
+      metadata: {
+        tags: [concept.type],
+        lastUpdated: Date.now(),
+        learningTime: concept.difficulty * 30, // 预估学习时间
+      },
+    }))
+  }
+
+  private static createEdges(nodes: KnowledgeNode[], content: string): KnowledgeEdge[] {
+    const edges: KnowledgeEdge[] = []
+    let edgeId = 0
+
+    // 基于节点类型和重要性创建边
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const node1 = nodes[i]
+        const node2 = nodes[j]
+
+        // 根据节点类型确定关系类型
+        let edgeType: KnowledgeEdge["type"] = "related"
+        let weight = 0.3
+
+        if (node1.type === "concept" && node2.type === "skill") {
+          edgeType = "leads_to"
+          weight = 0.7
+        } else if (node1.type === "skill" && node2.type === "resource") {
+          edgeType = "contains"
+          weight = 0.6
+        } else if (node1.difficulty < node2.difficulty) {
+          edgeType = "prerequisite"
+          weight = 0.8
+        }
+
+        // 基于重要性调整权重
+        weight *= (node1.importance + node2.importance) / 2
+
+        if (weight > 0.4 || edges.length < 3) {
+          edges.push({
+            id: `edge-${edgeId++}`,
+            source: node1.id,
+            target: node2.id,
+            type: edgeType,
+            weight,
+            description: `${node1.label}与${node2.label}的关系`,
+          })
+        }
+      }
+    }
+
+    return edges.slice(0, 12) // 限制边的数量
+  }
+
+  private static calculateLayout(nodes: KnowledgeNode[], edges: KnowledgeEdge[]) {
+    const centerX = 400
+    const centerY = 300
+    const radius = 150
+
+    // 使用圆形布局
+    nodes.forEach((node, index) => {
+      const angle = (index / nodes.length) * 2 * Math.PI
+      node.x = centerX + Math.cos(angle) * radius
+      node.y = centerY + Math.sin(angle) * radius
+    })
+
+    // 根据重要性调整位置
+    const importantNodes = nodes.filter((n) => n.importance > 0.7)
+    importantNodes.forEach((node, index) => {
+      const angle = (index / importantNodes.length) * 2 * Math.PI
+      node.x = centerX + Math.cos(angle) * (radius * 0.6)
+      node.y = centerY + Math.sin(angle) * (radius * 0.6)
+    })
+  }
+
+  static saveKnowledgeGraph(graph: KnowledgeGraph): void {
+    const graphs = this.getKnowledgeGraphs()
+    graphs.unshift(graph)
+
+    // 限制保存的图谱数量
+    if (graphs.length > 20) {
+      graphs.splice(20)
+    }
+
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(graphs))
+  }
+
+  static getRelatedConcepts(nodeId: string, graph: KnowledgeGraph): KnowledgeNode[] {
+    const relatedEdges = graph.edges.filter((edge) => edge.source === nodeId || edge.target === nodeId)
+    const relatedNodeIds = relatedEdges.map((edge) => (edge.source === nodeId ? edge.target : edge.source))
+
+    return graph.nodes.filter((node) => relatedNodeIds.includes(node.id))
+  }
+
+  static getLearningPath(startNodeId: string, endNodeId: string, graph: KnowledgeGraph): KnowledgeNode[] {
+    // 简化的路径查找算法
+    const visited = new Set<string>()
+    const path: KnowledgeNode[] = []
+
+    const findPath = (currentId: string, targetId: string): boolean => {
+      if (currentId === targetId) return true
+      if (visited.has(currentId)) return false
+
+      visited.add(currentId)
+      const currentNode = graph.nodes.find((n) => n.id === currentId)
+      if (currentNode) path.push(currentNode)
+
+      // 查找前置条件边
+      const prerequisiteEdges = graph.edges.filter((edge) => edge.target === currentId && edge.type === "prerequisite")
+
+      for (const edge of prerequisiteEdges) {
+        if (findPath(edge.source, targetId)) return true
+      }
+
+      path.pop()
+      return false
+    }
+
+    findPath(startNodeId, endNodeId)
+    return path
   }
 }
-
-// 单例实例
-export const knowledgeGraphManager = new KnowledgeGraphManager()

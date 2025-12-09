@@ -1,605 +1,301 @@
+import type { KnowledgeGraph } from "./knowledge-graph"
+
+export interface LearningGoal {
+  id: string
+  title: string
+  description: string
+  targetSkills: string[]
+  difficulty: 1 | 2 | 3 | 4 | 5
+  estimatedTime: number // 小时
+  priority: "low" | "medium" | "high"
+  deadline?: number
+  createdAt: number
+}
+
 export interface LearningStep {
   id: string
   title: string
   description: string
-  type: "concept" | "practice" | "assessment" | "project" | "reading"
-  difficulty: number
+  type: "study" | "practice" | "review" | "assessment"
   estimatedTime: number // 分钟
+  difficulty: 1 | 2 | 3 | 4 | 5
   prerequisites: string[]
   resources: LearningResource[]
-  status: "not-started" | "in-progress" | "completed" | "skipped"
-  progress: number // 0-100
-  completedAt?: Date
+  completed: boolean
+  completedAt?: number
   notes?: string
-  tags: string[]
 }
 
 export interface LearningResource {
   id: string
   title: string
-  type: "video" | "article" | "book" | "course" | "exercise" | "quiz"
+  type: "article" | "video" | "book" | "course" | "exercise"
   url?: string
-  content?: string
-  duration?: number
-  difficulty: number
+  description: string
+  difficulty: 1 | 2 | 3 | 4 | 5
+  estimatedTime: number
   rating?: number
-  provider?: string
 }
 
 export interface LearningPath {
   id: string
+  goalId: string
   title: string
   description: string
-  category: string
-  difficulty: "beginner" | "intermediate" | "advanced"
-  estimatedDuration: number // 小时
   steps: LearningStep[]
-  prerequisites: string[]
-  objectives: string[]
-  createdAt: Date
-  updatedAt: Date
-  createdBy: string
-  isPublic: boolean
-  tags: string[]
-  stats: {
-    totalSteps: number
-    completedSteps: number
-    totalTime: number
-    completedTime: number
-    averageRating: number
-    enrollments: number
-  }
-}
-
-export interface LearningProgress {
-  pathId: string
-  userId: string
-  currentStepId: string
-  completedSteps: string[]
-  totalTimeSpent: number
-  startedAt: Date
-  lastAccessedAt: Date
-  completionPercentage: number
-  notes: Record<string, string> // stepId -> note
-  ratings: Record<string, number> // stepId -> rating
+  totalEstimatedTime: number
+  progress: number // 0-100
+  createdAt: number
+  updatedAt: number
+  status: "not_started" | "in_progress" | "completed" | "paused"
 }
 
 export class LearningPathManager {
-  private paths: Map<string, LearningPath> = new Map()
-  private progress: Map<string, LearningProgress> = new Map() // userId_pathId -> progress
-  private templates: Map<string, LearningPath> = new Map()
+  private static readonly GOALS_STORAGE_KEY = "ai-search-learning-goals"
+  private static readonly PATHS_STORAGE_KEY = "ai-search-learning-paths"
 
-  // 创建学习路径
-  createPath(pathData: Omit<LearningPath, "id" | "createdAt" | "updatedAt" | "stats">): LearningPath {
-    const path: LearningPath = {
-      ...pathData,
-      id: `path_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      stats: {
-        totalSteps: pathData.steps.length,
-        completedSteps: 0,
-        totalTime: pathData.steps.reduce((sum, step) => sum + step.estimatedTime, 0),
-        completedTime: 0,
-        averageRating: 0,
-        enrollments: 0,
-      },
+  // 学习目标管理
+  static getLearningGoals(): LearningGoal[] {
+    if (typeof window === "undefined") return []
+
+    try {
+      const stored = localStorage.getItem(this.GOALS_STORAGE_KEY)
+      return stored ? JSON.parse(stored) : []
+    } catch {
+      return []
+    }
+  }
+
+  static createLearningGoal(
+    title: string,
+    description: string,
+    targetSkills: string[],
+    difficulty: 1 | 2 | 3 | 4 | 5,
+    estimatedTime: number,
+    priority: "low" | "medium" | "high" = "medium",
+    deadline?: number,
+  ): LearningGoal {
+    const goal: LearningGoal = {
+      id: `goal-${Date.now()}`,
+      title,
+      description,
+      targetSkills,
+      difficulty,
+      estimatedTime,
+      priority,
+      deadline,
+      createdAt: Date.now(),
     }
 
-    this.paths.set(path.id, path)
+    const goals = this.getLearningGoals()
+    goals.unshift(goal)
+    localStorage.setItem(this.GOALS_STORAGE_KEY, JSON.stringify(goals))
+
+    return goal
+  }
+
+  // 学习路径管理
+  static getLearningPaths(): LearningPath[] {
+    if (typeof window === "undefined") return []
+
+    try {
+      const stored = localStorage.getItem(this.PATHS_STORAGE_KEY)
+      return stored ? JSON.parse(stored) : []
+    } catch {
+      return []
+    }
+  }
+
+  static generateLearningPath(goal: LearningGoal, knowledgeGraph?: KnowledgeGraph): LearningPath {
+    const steps = this.generateLearningSteps(goal, knowledgeGraph)
+    const totalTime = steps.reduce((sum, step) => sum + step.estimatedTime, 0)
+
+    const path: LearningPath = {
+      id: `path-${Date.now()}`,
+      goalId: goal.id,
+      title: `学习路径：${goal.title}`,
+      description: `为实现"${goal.title}"目标而制定的个性化学习路径`,
+      steps,
+      totalEstimatedTime: totalTime,
+      progress: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      status: "not_started",
+    }
+
+    const paths = this.getLearningPaths()
+    paths.unshift(path)
+    localStorage.setItem(this.PATHS_STORAGE_KEY, JSON.stringify(paths))
+
     return path
   }
 
-  // 智能生成学习路径
-  generatePath(
-    topic: string,
-    difficulty: LearningPath["difficulty"],
-    preferences: {
-      preferredTypes: LearningStep["type"][]
-      timeConstraint?: number // 小时
-      focusAreas?: string[]
-    },
-  ): LearningPath {
+  private static generateLearningSteps(goal: LearningGoal, knowledgeGraph?: KnowledgeGraph): LearningStep[] {
     const steps: LearningStep[] = []
+    let stepId = 0
 
-    // 基础概念步骤
-    if (preferences.preferredTypes.includes("concept")) {
-      steps.push({
-        id: `step_${Date.now()}_1`,
-        title: `${topic}基础概念`,
-        description: `学习${topic}的核心概念和基本原理`,
-        type: "concept",
-        difficulty: difficulty === "beginner" ? 1 : difficulty === "intermediate" ? 2 : 3,
-        estimatedTime: 60,
-        prerequisites: [],
-        resources: this.generateResources(topic, "concept"),
-        status: "not-started",
-        progress: 0,
-        tags: [topic, "基础", "概念"],
-      })
-    }
-
-    // 实践步骤
-    if (preferences.preferredTypes.includes("practice")) {
-      steps.push({
-        id: `step_${Date.now()}_2`,
-        title: `${topic}实践练习`,
-        description: `通过实际练习掌握${topic}的应用`,
-        type: "practice",
-        difficulty: difficulty === "beginner" ? 2 : difficulty === "intermediate" ? 3 : 4,
-        estimatedTime: 90,
-        prerequisites: steps.length > 0 ? [steps[0].id] : [],
-        resources: this.generateResources(topic, "practice"),
-        status: "not-started",
-        progress: 0,
-        tags: [topic, "实践", "练习"],
-      })
-    }
-
-    // 项目步骤
-    if (preferences.preferredTypes.includes("project")) {
-      steps.push({
-        id: `step_${Date.now()}_3`,
-        title: `${topic}项目实战`,
-        description: `完成一个完整的${topic}项目`,
-        type: "project",
-        difficulty: difficulty === "beginner" ? 3 : difficulty === "intermediate" ? 4 : 5,
-        estimatedTime: 180,
-        prerequisites: steps.slice(0, 2).map((s) => s.id),
-        resources: this.generateResources(topic, "project"),
-        status: "not-started",
-        progress: 0,
-        tags: [topic, "项目", "实战"],
-      })
-    }
-
-    // 评估步骤
-    if (preferences.preferredTypes.includes("assessment")) {
-      steps.push({
-        id: `step_${Date.now()}_4`,
-        title: `${topic}知识评估`,
-        description: `测试你对${topic}的掌握程度`,
-        type: "assessment",
-        difficulty: difficulty === "beginner" ? 2 : difficulty === "intermediate" ? 3 : 4,
-        estimatedTime: 45,
-        prerequisites: steps.map((s) => s.id),
-        resources: this.generateResources(topic, "assessment"),
-        status: "not-started",
-        progress: 0,
-        tags: [topic, "评估", "测试"],
-      })
-    }
-
-    return this.createPath({
-      title: `${topic}学习路径`,
-      description: `系统学习${topic}的完整路径`,
-      category: this.inferCategory(topic),
-      difficulty,
-      estimatedDuration: Math.ceil(steps.reduce((sum, step) => sum + step.estimatedTime, 0) / 60),
-      steps,
+    // 基础阶段
+    steps.push({
+      id: `step-${stepId++}`,
+      title: "基础概念学习",
+      description: `学习${goal.title}的基础概念和理论知识`,
+      type: "study",
+      estimatedTime: Math.max(30, goal.estimatedTime * 60 * 0.3),
+      difficulty: Math.max(1, goal.difficulty - 1) as 1 | 2 | 3 | 4 | 5,
       prerequisites: [],
-      objectives: [`掌握${topic}的核心概念`, `能够实际应用${topic}解决问题`, `具备${topic}项目开发能力`],
-      createdBy: "system",
-      isPublic: true,
-      tags: [topic, difficulty, "自动生成"],
+      resources: this.generateResources("基础概念", goal.difficulty),
+      completed: false,
     })
-  }
 
-  // 开始学习路径
-  startPath(pathId: string, userId: string): LearningProgress {
-    const path = this.paths.get(pathId)
-    if (!path) throw new Error("Learning path not found")
+    // 实践阶段
+    steps.push({
+      id: `step-${stepId++}`,
+      title: "实践练习",
+      description: `通过实际练习巩固${goal.title}相关技能`,
+      type: "practice",
+      estimatedTime: Math.max(45, goal.estimatedTime * 60 * 0.4),
+      difficulty: goal.difficulty,
+      prerequisites: [steps[0].id],
+      resources: this.generateResources("实践练习", goal.difficulty),
+      completed: false,
+    })
 
-    const progressKey = `${userId}_${pathId}`
-    const progress: LearningProgress = {
-      pathId,
-      userId,
-      currentStepId: path.steps[0]?.id || "",
-      completedSteps: [],
-      totalTimeSpent: 0,
-      startedAt: new Date(),
-      lastAccessedAt: new Date(),
-      completionPercentage: 0,
-      notes: {},
-      ratings: {},
-    }
-
-    this.progress.set(progressKey, progress)
-
-    // 更新路径统计
-    path.stats.enrollments++
-
-    return progress
-  }
-
-  // 完成学习步骤
-  completeStep(
-    pathId: string,
-    userId: string,
-    stepId: string,
-    timeSpent: number,
-    rating?: number,
-    note?: string,
-  ): boolean {
-    const progressKey = `${userId}_${pathId}`
-    const progress = this.progress.get(progressKey)
-    const path = this.paths.get(pathId)
-
-    if (!progress || !path) return false
-
-    const step = path.steps.find((s) => s.id === stepId)
-    if (!step) return false
-
-    // 更新步骤状态
-    step.status = "completed"
-    step.progress = 100
-    step.completedAt = new Date()
-
-    // 更新进度
-    if (!progress.completedSteps.includes(stepId)) {
-      progress.completedSteps.push(stepId)
-    }
-    progress.totalTimeSpent += timeSpent
-    progress.lastAccessedAt = new Date()
-    progress.completionPercentage = (progress.completedSteps.length / path.steps.length) * 100
-
-    if (rating) {
-      progress.ratings[stepId] = rating
-    }
-
-    if (note) {
-      progress.notes[stepId] = note
-    }
-
-    // 找到下一个可用步骤
-    const nextStep = this.findNextAvailableStep(path, progress.completedSteps)
-    if (nextStep) {
-      progress.currentStepId = nextStep.id
-    }
-
-    // 更新路径统计
-    this.updatePathStats(pathId)
-
-    return true
-  }
-
-  // 获取推荐的下一步
-  getNextSteps(pathId: string, userId: string): LearningStep[] {
-    const progressKey = `${userId}_${pathId}`
-    const progress = this.progress.get(progressKey)
-    const path = this.paths.get(pathId)
-
-    if (!progress || !path) return []
-
-    return path.steps
-      .filter((step) => {
-        // 检查前置条件是否满足
-        const prerequisitesMet = step.prerequisites.every((prereq) => progress.completedSteps.includes(prereq))
-
-        // 未完成且前置条件满足
-        return step.status !== "completed" && prerequisitesMet
+    // 进阶阶段
+    if (goal.difficulty >= 3) {
+      steps.push({
+        id: `step-${stepId++}`,
+        title: "进阶应用",
+        description: `探索${goal.title}的高级应用和技巧`,
+        type: "study",
+        estimatedTime: Math.max(60, goal.estimatedTime * 60 * 0.2),
+        difficulty: Math.min(5, goal.difficulty + 1) as 1 | 2 | 3 | 4 | 5,
+        prerequisites: [steps[1].id],
+        resources: this.generateResources("进阶应用", goal.difficulty + 1),
+        completed: false,
       })
-      .sort((a, b) => a.difficulty - b.difficulty)
-  }
-
-  // 获取学习建议
-  getLearningRecommendations(
-    pathId: string,
-    userId: string,
-  ): {
-    nextSteps: LearningStep[]
-    reviewSteps: LearningStep[]
-    additionalResources: LearningResource[]
-    estimatedTimeToComplete: number
-  } {
-    const progressKey = `${userId}_${pathId}`
-    const progress = this.progress.get(progressKey)
-    const path = this.paths.get(pathId)
-
-    if (!progress || !path) {
-      return {
-        nextSteps: [],
-        reviewSteps: [],
-        additionalResources: [],
-        estimatedTimeToComplete: 0,
-      }
     }
 
-    const nextSteps = this.getNextSteps(pathId, userId)
-
-    // 找到需要复习的步骤（评分较低的已完成步骤）
-    const reviewSteps = path.steps.filter((step) => {
-      const rating = progress.ratings[step.id]
-      return step.status === "completed" && rating && rating < 3
+    // 复习和评估
+    steps.push({
+      id: `step-${stepId++}`,
+      title: "复习与评估",
+      description: `回顾学习内容，评估掌握程度`,
+      type: "review",
+      estimatedTime: Math.max(20, goal.estimatedTime * 60 * 0.1),
+      difficulty: goal.difficulty,
+      prerequisites: steps.slice(-1).map((s) => s.id),
+      resources: this.generateResources("复习评估", goal.difficulty),
+      completed: false,
     })
 
-    // 剩余时间估算
-    const remainingSteps = path.steps.filter((step) => step.status !== "completed")
-    const estimatedTimeToComplete = remainingSteps.reduce((sum, step) => sum + step.estimatedTime, 0)
-
-    // 额外资源推荐
-    const additionalResources = this.getAdditionalResources(path, progress)
-
-    return {
-      nextSteps: nextSteps.slice(0, 3),
-      reviewSteps: reviewSteps.slice(0, 2),
-      additionalResources: additionalResources.slice(0, 5),
-      estimatedTimeToComplete,
-    }
+    return steps
   }
 
-  // 搜索学习路径
-  searchPaths(
-    query: string,
-    filters: {
-      category?: string
-      difficulty?: LearningPath["difficulty"]
-      tags?: string[]
-      minDuration?: number
-      maxDuration?: number
-    } = {},
-  ): LearningPath[] {
-    const results: Array<{ path: LearningPath; relevance: number }> = []
-
-    this.paths.forEach((path) => {
-      let relevance = 0
-
-      // 应用过滤器
-      if (filters.category && path.category !== filters.category) return
-      if (filters.difficulty && path.difficulty !== filters.difficulty) return
-      if (filters.minDuration && path.estimatedDuration < filters.minDuration) return
-      if (filters.maxDuration && path.estimatedDuration > filters.maxDuration) return
-      if (filters.tags && !filters.tags.some((tag) => path.tags.includes(tag))) return
-
-      // 计算相关性
-      if (path.title.toLowerCase().includes(query.toLowerCase())) {
-        relevance += 0.8
-      }
-      if (path.description.toLowerCase().includes(query.toLowerCase())) {
-        relevance += 0.6
-      }
-      path.tags.forEach((tag) => {
-        if (tag.toLowerCase().includes(query.toLowerCase())) {
-          relevance += 0.4
-        }
-      })
-
-      if (relevance > 0 || query === "") {
-        results.push({ path, relevance })
-      }
-    })
-
-    return results.sort((a, b) => b.relevance - a.relevance).map((result) => result.path)
-  }
-
-  // 获取学习统计
-  getLearningStats(userId: string): {
-    totalPaths: number
-    completedPaths: number
-    inProgressPaths: number
-    totalTimeSpent: number
-    averageCompletion: number
-    favoriteCategories: string[]
-    achievements: string[]
-  } {
-    const userProgress = Array.from(this.progress.values()).filter((p) => p.userId === userId)
-
-    const completedPaths = userProgress.filter((p) => p.completionPercentage === 100).length
-    const inProgressPaths = userProgress.filter(
-      (p) => p.completionPercentage > 0 && p.completionPercentage < 100,
-    ).length
-    const totalTimeSpent = userProgress.reduce((sum, p) => sum + p.totalTimeSpent, 0)
-    const averageCompletion =
-      userProgress.length > 0
-        ? userProgress.reduce((sum, p) => sum + p.completionPercentage, 0) / userProgress.length
-        : 0
-
-    // 统计最喜欢的分类
-    const categoryCount: Record<string, number> = {}
-    userProgress.forEach((progress) => {
-      const path = this.paths.get(progress.pathId)
-      if (path) {
-        categoryCount[path.category] = (categoryCount[path.category] || 0) + 1
-      }
-    })
-
-    const favoriteCategories = Object.entries(categoryCount)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 3)
-      .map(([category]) => category)
-
-    // 成就系统
-    const achievements: string[] = []
-    if (completedPaths >= 1) achievements.push("初学者")
-    if (completedPaths >= 5) achievements.push("学习达人")
-    if (completedPaths >= 10) achievements.push("知识大师")
-    if (totalTimeSpent >= 3600) achievements.push("时间投资者") // 60小时
-    if (averageCompletion >= 80) achievements.push("完美主义者")
-
-    return {
-      totalPaths: userProgress.length,
-      completedPaths,
-      inProgressPaths,
-      totalTimeSpent,
-      averageCompletion,
-      favoriteCategories,
-      achievements,
-    }
-  }
-
-  // 私有方法
-  private generateResources(topic: string, type: LearningStep["type"]): LearningResource[] {
+  private static generateResources(topic: string, difficulty: number): LearningResource[] {
     const resources: LearningResource[] = []
+    let resourceId = 0
 
-    switch (type) {
-      case "concept":
-        resources.push({
-          id: `resource_${Date.now()}_1`,
-          title: `${topic}概念详解`,
-          type: "article",
-          difficulty: 2,
-          rating: 4.5,
-          provider: "AI学习平台",
-        })
-        break
-      case "practice":
-        resources.push({
-          id: `resource_${Date.now()}_2`,
-          title: `${topic}练习题集`,
-          type: "exercise",
-          difficulty: 3,
-          rating: 4.2,
-          provider: "AI学习平台",
-        })
-        break
-      case "project":
-        resources.push({
-          id: `resource_${Date.now()}_3`,
-          title: `${topic}项目指南`,
-          type: "course",
-          difficulty: 4,
-          rating: 4.7,
-          provider: "AI学习平台",
-        })
-        break
-      case "assessment":
-        resources.push({
-          id: `resource_${Date.now()}_4`,
-          title: `${topic}知识测试`,
-          type: "quiz",
-          difficulty: 3,
-          rating: 4.0,
-          provider: "AI学习平台",
-        })
-        break
+    // 文章资源
+    resources.push({
+      id: `resource-${resourceId++}`,
+      title: `${topic} - 理论基础`,
+      type: "article",
+      description: `关于${topic}的详细理论介绍`,
+      difficulty: Math.max(1, difficulty - 1) as 1 | 2 | 3 | 4 | 5,
+      estimatedTime: 15 + difficulty * 5,
+      rating: 4.2,
+    })
+
+    // 视频资源
+    resources.push({
+      id: `resource-${resourceId++}`,
+      title: `${topic} - 视频教程`,
+      type: "video",
+      description: `${topic}的视频讲解和演示`,
+      difficulty: difficulty as 1 | 2 | 3 | 4 | 5,
+      estimatedTime: 20 + difficulty * 8,
+      rating: 4.5,
+    })
+
+    // 练习资源
+    if (difficulty >= 2) {
+      resources.push({
+        id: `resource-${resourceId++}`,
+        title: `${topic} - 实践练习`,
+        type: "exercise",
+        description: `${topic}相关的实践练习题`,
+        difficulty: difficulty as 1 | 2 | 3 | 4 | 5,
+        estimatedTime: 30 + difficulty * 10,
+        rating: 4.0,
+      })
     }
 
     return resources
   }
 
-  private inferCategory(topic: string): string {
-    const categoryMap: Record<string, string> = {
-      javascript: "编程语言",
-      python: "编程语言",
-      react: "前端开发",
-      vue: "前端开发",
-      nodejs: "后端开发",
-      database: "数据库",
-      ai: "人工智能",
-      "machine learning": "人工智能",
-      design: "设计",
-      marketing: "市场营销",
-    }
+  static updateStepProgress(pathId: string, stepId: string, completed: boolean, notes?: string): void {
+    const paths = this.getLearningPaths()
+    const path = paths.find((p) => p.id === pathId)
 
-    const lowerTopic = topic.toLowerCase()
-    for (const [key, category] of Object.entries(categoryMap)) {
-      if (lowerTopic.includes(key)) {
-        return category
+    if (path) {
+      const step = path.steps.find((s) => s.id === stepId)
+      if (step) {
+        step.completed = completed
+        step.completedAt = completed ? Date.now() : undefined
+        step.notes = notes
+
+        // 更新路径进度
+        const completedSteps = path.steps.filter((s) => s.completed).length
+        path.progress = (completedSteps / path.steps.length) * 100
+        path.updatedAt = Date.now()
+
+        // 更新路径状态
+        if (path.progress === 100) {
+          path.status = "completed"
+        } else if (path.progress > 0) {
+          path.status = "in_progress"
+        }
+
+        localStorage.setItem(this.PATHS_STORAGE_KEY, JSON.stringify(paths))
       }
     }
-
-    return "通用技能"
   }
 
-  private findNextAvailableStep(path: LearningPath, completedSteps: string[]): LearningStep | null {
-    return (
-      path.steps.find((step) => {
-        const prerequisitesMet = step.prerequisites.every((prereq) => completedSteps.includes(prereq))
-        return step.status !== "completed" && prerequisitesMet
-      }) || null
-    )
-  }
+  static getRecommendedNextSteps(pathId: string): LearningStep[] {
+    const paths = this.getLearningPaths()
+    const path = paths.find((p) => p.id === pathId)
 
-  private updatePathStats(pathId: string): void {
-    const path = this.paths.get(pathId)
-    if (!path) return
+    if (!path) return []
 
-    const allProgress = Array.from(this.progress.values()).filter((p) => p.pathId === pathId)
+    // 找到可以开始的下一步
+    return path.steps.filter((step) => {
+      if (step.completed) return false
 
-    path.stats.completedSteps = path.steps.filter((s) => s.status === "completed").length
-    path.stats.completedTime = path.steps
-      .filter((s) => s.status === "completed")
-      .reduce((sum, s) => sum + s.estimatedTime, 0)
-
-    // 计算平均评分
-    const allRatings: number[] = []
-    allProgress.forEach((progress) => {
-      Object.values(progress.ratings).forEach((rating) => {
-        allRatings.push(rating)
+      // 检查前置条件是否完成
+      return step.prerequisites.every((prereqId) => {
+        const prereqStep = path.steps.find((s) => s.id === prereqId)
+        return prereqStep?.completed || false
       })
     })
-
-    path.stats.averageRating =
-      allRatings.length > 0 ? allRatings.reduce((sum, rating) => sum + rating, 0) / allRatings.length : 0
-
-    path.updatedAt = new Date()
   }
 
-  private getAdditionalResources(path: LearningPath, progress: LearningProgress): LearningResource[] {
-    // 基于用户的学习进度和评分推荐额外资源
-    const resources: LearningResource[] = []
+  static getPathStatistics(pathId: string) {
+    const paths = this.getLearningPaths()
+    const path = paths.find((p) => p.id === pathId)
 
-    // 如果某个步骤评分较低，推荐相关的补充资源
-    Object.entries(progress.ratings).forEach(([stepId, rating]) => {
-      if (rating < 3) {
-        const step = path.steps.find((s) => s.id === stepId)
-        if (step) {
-          resources.push({
-            id: `additional_${Date.now()}_${stepId}`,
-            title: `${step.title}补充材料`,
-            type: "article",
-            difficulty: step.difficulty - 1,
-            rating: 4.0,
-            provider: "AI学习平台",
-          })
-        }
-      }
-    })
+    if (!path) return null
 
-    return resources
-  }
+    const completedSteps = path.steps.filter((s) => s.completed).length
+    const totalSteps = path.steps.length
+    const completedTime = path.steps.filter((s) => s.completed).reduce((sum, step) => sum + step.estimatedTime, 0)
 
-  // 获取所有路径
-  getAllPaths(): LearningPath[] {
-    return Array.from(this.paths.values())
-  }
-
-  // 获取用户进度
-  getUserProgress(userId: string, pathId: string): LearningProgress | undefined {
-    return this.progress.get(`${userId}_${pathId}`)
-  }
-
-  // 获取路径详情
-  getPath(pathId: string): LearningPath | undefined {
-    return this.paths.get(pathId)
-  }
-
-  // 删除路径
-  deletePath(pathId: string): boolean {
-    // 删除相关的进度记录
-    const progressToDelete: string[] = []
-    this.progress.forEach((progress, key) => {
-      if (progress.pathId === pathId) {
-        progressToDelete.push(key)
-      }
-    })
-
-    progressToDelete.forEach((key) => {
-      this.progress.delete(key)
-    })
-
-    return this.paths.delete(pathId)
-  }
-
-  // 更新路径
-  updatePath(pathId: string, updates: Partial<LearningPath>): boolean {
-    const path = this.paths.get(pathId)
-    if (!path) return false
-
-    Object.assign(path, updates, { updatedAt: new Date() })
-    return true
+    return {
+      progress: path.progress,
+      completedSteps,
+      totalSteps,
+      completedTime,
+      totalEstimatedTime: path.totalEstimatedTime,
+      averageStepDifficulty: path.steps.reduce((sum, step) => sum + step.difficulty, 0) / path.steps.length,
+    }
   }
 }
-
-// 单例实例
-export const learningPathManager = new LearningPathManager()

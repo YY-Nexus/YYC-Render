@@ -41,7 +41,7 @@ export default function ContentDetailPage() {
     title: "高效学习方法分享：如何在30天内掌握新技能",
     content: `# 高效学习方法分享
 
-经过一年的实践和总结，我想分享一些真正有效的学习方法，希望能帮助到正在学习路上的朋���们。
+经过一年的实践和总结，我想分享一些真正有效的学习方法，希望能帮助到正在学习路上的朋友们。
 
 ## 核心原则
 
@@ -271,7 +271,7 @@ export default function ContentDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">���容不存在</p>
+          <p className="text-gray-600 mb-4">内容不存在</p>
           <button onClick={() => router.back()} className="text-blue-600 hover:underline">
             返回上一页
           </button>
