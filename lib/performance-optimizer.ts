@@ -566,16 +566,14 @@ export class PerformanceOptimizer {
           throw new Error('不允许访问内部资源')
         }
         
-        // Check IPv4 private ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
-        if (hostname.match(/^10\./) || 
-            hostname.match(/^192\.168\./) ||
-            hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./) ||
-            hostname.match(/^169\.254\./)) {
+        // Check IPv4 private ranges and localhost variations with single regex
+        // Covers: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 127.0.0.0/8
+        if (hostname.match(/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|127\.)/)) {
           throw new Error('不允许访问内部资源')
         }
         
-        // Check for localhost variations and loopback
-        if (hostname.match(/^127\./) || hostname.endsWith('.local') || hostname.endsWith('.localhost')) {
+        // Check for localhost domain variations
+        if (hostname.endsWith('.local') || hostname.endsWith('.localhost')) {
           throw new Error('不允许访问内部资源')
         }
         

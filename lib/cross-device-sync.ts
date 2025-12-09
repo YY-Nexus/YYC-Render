@@ -103,10 +103,12 @@ export class CrossDeviceSyncManager {
   // Helper function to generate cryptographically secure random strings
   private static generateSecureRandomString(length: number): string {
     if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-      const array = new Uint8Array(Math.ceil(length * 3 / 4)) // Generate more bytes than needed
+      // Use enough bytes to ensure sufficient randomness after base64 encoding
+      const array = new Uint8Array(length)
       crypto.getRandomValues(array)
       // Use base64url encoding for URL-safe random strings
-      const base64 = btoa(String.fromCharCode(...array))
+      // Convert bytes to string safely without call stack issues
+      const base64 = btoa(Array.from(array, byte => String.fromCharCode(byte)).join(''))
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
         .replace(/=/g, '')

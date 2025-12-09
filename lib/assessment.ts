@@ -462,10 +462,11 @@ export class AssessmentManager {
   private static generateVerificationCode(): string {
     // Use cryptographically secure random numbers
     if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-      const array = new Uint8Array(18) // 18 bytes = 24 base64 characters
+      const array = new Uint8Array(24) // Use sufficient bytes for 24-character code
       crypto.getRandomValues(array)
       // Use base64url encoding for verification codes
-      const base64 = btoa(String.fromCharCode(...array))
+      // Convert bytes to string safely without call stack issues
+      const base64 = btoa(Array.from(array, byte => String.fromCharCode(byte)).join(''))
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
         .replace(/=/g, '')
