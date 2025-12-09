@@ -133,10 +133,15 @@ export class AuthManager {
 
   // Helper function to generate cryptographically secure random strings
   private static generateSecureRandomString(length: number): string {
-    const array = new Uint8Array(length)
     if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const array = new Uint8Array(Math.ceil(length * 3 / 4)) // Generate more bytes than needed
       crypto.getRandomValues(array)
-      return Array.from(array, byte => byte.toString(36).padStart(2, '0')).join('').substring(0, length)
+      // Use base64url encoding for URL-safe random strings
+      const base64 = btoa(String.fromCharCode(...array))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '')
+      return base64.substring(0, length)
     }
     // For Node.js environments, crypto should be available via require('crypto').webcrypto
     throw new Error('Cryptographic random number generator not available')

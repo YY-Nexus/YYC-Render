@@ -399,8 +399,12 @@ export class AssessmentManager {
 
   // Simple obfuscation for localStorage
   // NOTE: This uses base64 encoding for basic obfuscation only, NOT encryption.
-  // For production use with sensitive data, implement proper encryption using
-  // Web Crypto API (AES-GCM) or integrate with EncryptionManager.
+  // SECURITY WARNING: localStorage is not secure for sensitive data.
+  // For production use:
+  // 1. Store certificates server-side with secure authentication
+  // 2. Use Web Crypto API (AES-GCM) for client-side encryption if needed
+  // 3. Consider using encrypted IndexedDB with proper key management
+  // 4. Implement certificate verification through a secure API endpoint
   private static encryptData(data: string): string {
     if (typeof window === "undefined" || typeof btoa === "undefined") {
       return data
@@ -457,10 +461,15 @@ export class AssessmentManager {
 
   private static generateVerificationCode(): string {
     // Use cryptographically secure random numbers
-    const array = new Uint8Array(16)
     if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const array = new Uint8Array(18) // 18 bytes = 24 base64 characters
       crypto.getRandomValues(array)
-      return Array.from(array, byte => byte.toString(36).padStart(2, '0')).join('').substring(0, 24)
+      // Use base64url encoding for verification codes
+      const base64 = btoa(String.fromCharCode(...array))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '')
+      return base64.substring(0, 24)
     }
     // For Node.js environments, crypto should be available via require('crypto').webcrypto
     throw new Error('Cryptographic random number generator not available for security-critical operations')

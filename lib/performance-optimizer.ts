@@ -552,18 +552,30 @@ export class PerformanceOptimizer {
         // Validate URL to prevent SSRF
         const parsedUrl = new URL(url)
         const allowedProtocols = ['https:', 'http:']
-        const blockedHosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1']
         
         if (!allowedProtocols.includes(parsedUrl.protocol)) {
           throw new Error(`不支持的协议: ${parsedUrl.protocol}`)
         }
         
-        // Block internal/private IP addresses using exact matching
+        // Block internal/private IP addresses and hostnames
         const hostname = parsedUrl.hostname.toLowerCase()
-        if (blockedHosts.includes(hostname) || 
-            hostname.startsWith('192.168.') || 
-            hostname.startsWith('10.') ||
-            hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) {
+        const blockedHosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']
+        
+        // Check exact matches first
+        if (blockedHosts.includes(hostname)) {
+          throw new Error('不允许访问内部资源')
+        }
+        
+        // Check IPv4 private ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
+        if (hostname.match(/^10\./) || 
+            hostname.match(/^192\.168\./) ||
+            hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./) ||
+            hostname.match(/^169\.254\./)) {
+          throw new Error('不允许访问内部资源')
+        }
+        
+        // Check for localhost variations and loopback
+        if (hostname.match(/^127\./) || hostname.endsWith('.local') || hostname.endsWith('.localhost')) {
           throw new Error('不允许访问内部资源')
         }
         
