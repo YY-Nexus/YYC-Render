@@ -558,11 +558,12 @@ export class PerformanceOptimizer {
           throw new Error(`不支持的协议: ${parsedUrl.protocol}`)
         }
         
-        // Block internal/private IP addresses
-        if (blockedHosts.some(host => parsedUrl.hostname.includes(host)) || 
-            parsedUrl.hostname.startsWith('192.168.') || 
-            parsedUrl.hostname.startsWith('10.') ||
-            parsedUrl.hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) {
+        // Block internal/private IP addresses using exact matching
+        const hostname = parsedUrl.hostname.toLowerCase()
+        if (blockedHosts.includes(hostname) || 
+            hostname.startsWith('192.168.') || 
+            hostname.startsWith('10.') ||
+            hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) {
           throw new Error('不允许访问内部资源')
         }
         

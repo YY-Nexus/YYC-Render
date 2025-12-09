@@ -397,14 +397,15 @@ export class AssessmentManager {
     }
   }
 
-  // Simple encryption helper for localStorage
+  // Simple obfuscation for localStorage
+  // NOTE: This uses base64 encoding for basic obfuscation only, NOT encryption.
+  // For production use with sensitive data, implement proper encryption using
+  // Web Crypto API (AES-GCM) or integrate with EncryptionManager.
   private static encryptData(data: string): string {
     if (typeof window === "undefined" || typeof btoa === "undefined") {
       return data
     }
     try {
-      // Use base64 encoding as a basic obfuscation
-      // In production, this should use proper encryption with EncryptionManager
       return btoa(encodeURIComponent(data))
     } catch {
       return data
@@ -461,8 +462,8 @@ export class AssessmentManager {
       crypto.getRandomValues(array)
       return Array.from(array, byte => byte.toString(36).padStart(2, '0')).join('').substring(0, 24)
     }
-    // Fallback for non-crypto environments (still insecure but noted)
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+    // For Node.js environments, crypto should be available via require('crypto').webcrypto
+    throw new Error('Cryptographic random number generator not available for security-critical operations')
   }
 
   static getCertificates(userId?: string): Certificate[] {

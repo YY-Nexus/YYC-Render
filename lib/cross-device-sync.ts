@@ -105,13 +105,10 @@ export class CrossDeviceSyncManager {
     const array = new Uint8Array(length)
     if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
       crypto.getRandomValues(array)
-    } else {
-      // Fallback for environments without crypto
-      for (let i = 0; i < length; i++) {
-        array[i] = Math.floor(Math.random() * 256)
-      }
+      return Array.from(array, byte => byte.toString(36).padStart(2, '0')).join('').substring(0, length)
     }
-    return Array.from(array, byte => byte.toString(36).padStart(2, '0')).join('').substring(0, length)
+    // For Node.js environments, crypto should be available via require('crypto').webcrypto
+    throw new Error('Cryptographic random number generator not available')
   }
 
   static async initialize(): Promise<void> {
